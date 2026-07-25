@@ -158,6 +158,7 @@ function warnUnicodeEscape(
 
 export function assertNoBarePrefix(
   edits: ParsedEdit[],
+  fileLines: string[],
   fileHashes: string[],
   warnings: string[],
 ): void {
@@ -173,7 +174,9 @@ export function assertNoBarePrefix(
       if (!anchor) continue;
       const anchorLine = Number(anchor[1]);
       if (fileHashes[anchorLine - 1] !== anchor[2]) continue;
-      if (anchorLine >= start.line && anchorLine <= end.line) {
+      const inRange = anchorLine >= start.line && anchorLine <= end.line;
+      const verbatimRow = line.slice(match[0].length) === fileLines[anchorLine - 1];
+      if (inRange || verbatimRow) {
         suspects.push({ line, editIndex, lineIndex });
       } else {
         warnings.push(
@@ -189,7 +192,7 @@ export function assertNoBarePrefix(
   const exampleLine = suspects[0]!.line;
 
   throw new Error(
-    `[E_BARE_HASH_PREFIX] ${suspects.length} edit line(s) start with a real file-line anchor inside the replaced range (${locations}). Example: ${JSON.stringify(exampleLine)}. This is strong evidence the "line:hash│" prefix was copied from read or diff output. Remove the "line:hash│" prefix from each affected content_lines entry; keep only the literal line content that appears after "│". Remember: content_lines uses file content only, hash_range_inclusive uses anchors.`
+    `[E_BARE_HASH_PREFIX] ${suspects.length} edit line(s) are read/diff rows copied back as content — each starts with a real file-line anchor and either targets the replaced range or duplicates that line verbatim (${locations}). Example: ${JSON.stringify(exampleLine)}. Remove the "line:hash│" prefix from each affected content_lines entry; keep only the literal line content that appears after "│". Remember: content_lines uses file content only, hash_range_inclusive uses anchors.`
   );
 }
 

@@ -96,6 +96,17 @@ describe("bare-prefix false positives are impossible: only real anchors trigger 
 		expect(result.warnings?.some((w) => w.startsWith("[W_BARE_HASH_PREFIX]"))).toBe(true);
 	});
 
+	it("rejects a verbatim copied row even when its anchor is outside the replaced range (copy-move)", () => {
+		const hashes = lineHashes(file);
+		const anchor = anchorAt(hashes, 1);
+		const betaAnchor = anchorAt(hashes, 2);
+		expect(() =>
+      applyTool([
+        { hash_range_inclusive: [anchor, anchor], content_lines: [`${betaAnchor}│beta`] },
+      ], hashes),
+    ).toThrow(/E_BARE_HASH_PREFIX/);
+	});
+
 	it("does NOT reject a line:hash-shaped prefix that doesn't match any real current anchor", () => {
 		const hashes = lineHashes(file);
 		const anchor = anchorAt(hashes, 1);

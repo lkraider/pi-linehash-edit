@@ -176,7 +176,7 @@ export function applyEdits(
 		);
 	}
 
-	assertNoBarePrefix(edits, fileHashes, warnings);
+	assertNoBarePrefix(edits, fileLines, fileHashes, warnings);
 	warnUnicodeEscape(edits, warnings);
 
 	for (const bw of boundaryWarnings) {
