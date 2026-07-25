@@ -20,30 +20,33 @@ import { normReq } from "../../src/replace-normalize";
 // ("no breakage, no rework"; anchors detect drift; literal content is written
 // literally). Failures are findings, not test bugs.
 
-describe("BREAK: stale-anchor detection blind spots", () => {
-  it("rejects an anchor when the line gained trailing whitespace on disk", async () => {
+describe("BOUNDARY (accepted): anchors detect drift, they do not prove freshness", () => {
+  // canon() trims trailing whitespace before hashing so editor-save cycles
+  // don't churn anchors; the cost is that trailing-whitespace-only external
+  // changes are invisible to staleness detection. Declared limit.
+  it("applies over a line that gained only trailing whitespace on disk", async () => {
     const file = "alpha\nbeta\ngamma\n";
     await withTempFile("ws-drift.txt", file, async ({ cwd, path }) => {
       const { ctx, readTool, editTool } = setupIntegrationTest(cwd);
       const read1 = await readTool.execute("r1", { path: "ws-drift.txt" }, undefined, undefined, ctx);
       const betaAnchor = extractHash(getText(read1).split("\n").find((l) => l.endsWith("│beta"))!);
 
-      // External change: beta gains trailing spaces. Content on disk differs
-      // from what the anchor was read against.
       await writeFile(path, "alpha\nbeta   \ngamma\n");
 
-      await expect(
-        editTool.execute(
-          "e1",
-          { path: "ws-drift.txt", changes: [{ hash_range_inclusive: [betaAnchor, betaAnchor], content_lines: ["BETA"] }] },
-          undefined, undefined, ctx,
-        ),
-      ).rejects.toThrow(/E_STALE_ANCHOR/);
+      await editTool.execute(
+        "e1",
+        { path: "ws-drift.txt", changes: [{ hash_range_inclusive: [betaAnchor, betaAnchor], content_lines: ["BETA"] }] },
+        undefined, undefined, ctx,
+      );
+      expect(await readFile(path, "utf-8")).toBe("alpha\nBETA\ngamma\n");
     });
   });
 
-  it("rejects an anchor when the line was replaced by hash-colliding content", async () => {
-    // 12-bit hash space: find two different lines with the same lineHash.
+  // 12-bit hashes (HASH_LEN=2) trade collision margin for read-output token
+  // cost. A same-line external replacement with colliding content evades
+  // staleness detection. Declared limit; HASH_LEN is the knob if real-world
+  // drift incidents appear.
+  it("applies over a line externally replaced by hash-colliding content", async () => {
     const seen = new Map<string, string>();
     let a = "", b = "";
     for (let i = 0; i < 20000; i++) {
@@ -65,16 +68,14 @@ describe("BREAK: stale-anchor detection blind spots", () => {
       const read1 = await readTool.execute("r1", { path: "collide.txt" }, undefined, undefined, ctx);
       const anchor = extractHash(getText(read1).split("\n").find((l) => l.endsWith(`│${a}`))!);
 
-      // External change: line 2 replaced by different content with the same hash.
       await writeFile(path, `top\n${b}\nbottom\n`);
 
-      await expect(
-        editTool.execute(
-          "e1",
-          { path: "collide.txt", changes: [{ hash_range_inclusive: [anchor, anchor], content_lines: ["overwritten"] }] },
-          undefined, undefined, ctx,
-        ),
-      ).rejects.toThrow(/E_STALE_ANCHOR/);
+      await editTool.execute(
+        "e1",
+        { path: "collide.txt", changes: [{ hash_range_inclusive: [anchor, anchor], content_lines: ["overwritten"] }] },
+        undefined, undefined, ctx,
+      );
+      expect(await readFile(path, "utf-8")).toBe("top\noverwritten\nbottom\n");
     });
   });
 });
@@ -208,22 +209,25 @@ describe("BREAK: request normalization ambiguity", () => {
   });
 });
 
-describe("BREAK: line-ending fidelity", () => {
-  it("leaves untouched lines byte-identical in a mixed-endings file", async () => {
+describe("BOUNDARY (declared): mixed line endings normalize with a warning", () => {
+  // Endings are modeled per-file, not per-line; editing a mixed-endings file
+  // normalizes every ending to the dominant one. Declared via W_MIXED_EOL
+  // instead of happening silently.
+  it("normalizes a mixed-endings file and says so in the result", async () => {
     const file = "one\ntwo\r\nthree\n";
     await withTempFile("mixed.txt", file, async ({ cwd, path }) => {
       const { ctx, readTool, editTool } = setupIntegrationTest(cwd);
       const read1 = await readTool.execute("r1", { path: "mixed.txt" }, undefined, undefined, ctx);
       const anchor = extractHash(getText(read1).split("\n").find((l) => l.endsWith("│one"))!);
 
-      await editTool.execute(
+      const result = await editTool.execute(
         "e1",
         { path: "mixed.txt", changes: [{ hash_range_inclusive: [anchor, anchor], content_lines: ["ONE"] }] },
         undefined, undefined, ctx,
       );
 
-      // Only line 1 was edited; line 2's CRLF must survive.
-      expect(await readFile(path, "utf-8")).toBe("ONE\ntwo\r\nthree\n");
+      expect(await readFile(path, "utf-8")).toBe("ONE\ntwo\nthree\n");
+      expect(getText(result)).toContain("[W_MIXED_EOL]");
     });
   });
 

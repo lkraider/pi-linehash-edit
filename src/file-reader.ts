@@ -15,6 +15,7 @@ export interface NormFile {
   originalEnding: "\r\n" | "\n";
   fileHashes: string[];
   hadUtf8DecodeErrors: boolean;
+  hadMixedEndings: boolean;
 }
 
 export type SnapInfo = {
@@ -58,6 +59,10 @@ export async function readNormFile(
   abortIf(signal);
   const { bom, text: rawContent } = stripBOM(file.text);
   const originalEnding = detectEnding(rawContent);
+  const hasCRLF = rawContent.includes("\r\n");
+  const hasLoneLF = /(?<!\r)\n/.test(rawContent);
+  const hasLoneCR = /\r(?!\n)/.test(rawContent);
+  const hadMixedEndings = (hasCRLF && hasLoneLF) || hasLoneCR;
   const normalized = toLF(rawContent);
 
   if (maxLines !== undefined) {
@@ -77,5 +82,6 @@ export async function readNormFile(
     originalEnding,
     fileHashes,
     hadUtf8DecodeErrors: file.hadUtf8DecodeErrors === true,
+    hadMixedEndings,
   };
 }

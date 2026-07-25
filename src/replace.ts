@@ -162,7 +162,7 @@ export async function execPipeline(
     throw new Error('[E_BAD_SHAPE] Edit request requires a non-empty "changes" array.');
   }
 
-  const { normalized: originalNormalized, bom, originalEnding, fileHashes: originalHashes, hadUtf8DecodeErrors } = await readNormFile(
+  const { normalized: originalNormalized, bom, originalEnding, fileHashes: originalHashes, hadUtf8DecodeErrors, hadMixedEndings } = await readNormFile(
     path, cwd, signal, accessMode, undefined, MAX_HASH_LINES,
   );
 
@@ -179,6 +179,11 @@ export async function execPipeline(
   const resultHashes = lineHashes(result);
 
   const warnings = [...(anchorResult.warnings ?? [])];
+  if (hadMixedEndings) {
+    warnings.push(
+      `[W_MIXED_EOL] File has mixed line endings; this edit rewrites all line endings to ${originalEnding === "\r\n" ? "CRLF" : "LF"}.`,
+    );
+  }
 
   let totalAddedLines = 0;
   let totalRemovedLines = 0;

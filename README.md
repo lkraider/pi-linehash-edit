@@ -156,6 +156,8 @@ Before hashing, each line is normalized: carriage returns are stripped and trail
 
 Two duplicate-content lines get the same hash — that's fine, because their line numbers differ, and it's the line number that's checked first. There is no collision retry, no "used hash" bookkeeping, and no hash-space exhaustion: `HASH_LEN` in `src/hashline/hash.ts` sets the checksum length and can be raised for a wider drift-detection margin, but nothing in the system depends on it for correctness.
 
+Anchors are best-effort drift detection, not a freshness proof. Two external changes evade them by construction: a line that changed only in trailing whitespace (invisible by `canon()` design), and a same-line replacement whose content collides in the 12-bit hash space. Both apply the edit against the changed file. If drift protection against concurrent external writers matters, that is a snapshot/locking concern outside the anchor scheme.
+
 ### Bare-prefix detector
 
 The bare-prefix detector matches lines starting with a `line:hash│` shape (with an optional leading `+`, covering diff rows), then demands two pieces of evidence before hard-rejecting: the anchor must match the file's actual current anchor table, and it must point inside the range being replaced — together, the signature of read/diff rows pasted back as content. A real-anchor match outside the replaced range could be a legitimate quote of another line (docs, logs, this repo's own tests), so it applies with a `[W_BARE_HASH_PREFIX]` warning instead of blocking. Content that merely looks anchor-shaped but matches nothing real is always written literally.
