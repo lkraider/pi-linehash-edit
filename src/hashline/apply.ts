@@ -294,6 +294,51 @@ export function formatRegion(
 		.join("\n");
 }
 
+function idxToLine(charIdx: number, text: string): number {
+	let line = 1;
+	for (let i = 0; i < charIdx && i < text.length; i++) {
+		if (text[i] === "\n") line++;
+	}
+	return line;
+}
+
+function findChangedBounds(original: string, result: string): { firstDiff: number; lastRes: number } {
+	let firstDiff = 0;
+	const minLen = Math.min(original.length, result.length);
+	while (firstDiff < minLen && original[firstDiff] === result[firstDiff]) {
+		firstDiff++;
+	}
+
+	let lastOrig = original.length - 1;
+	let lastRes = result.length - 1;
+	while (
+		lastOrig >= firstDiff &&
+		lastRes >= firstDiff &&
+		original[lastOrig] === result[lastRes]
+	) {
+		lastOrig--;
+		lastRes--;
+	}
+
+	return { firstDiff, lastRes };
+}
+
+function resolveLastChangedLine(
+	firstChangedLine: number,
+	firstDiff: number,
+	lastRes: number,
+	original: string,
+	result: string,
+): number {
+	if (lastRes < firstDiff) {
+		return result.length === 0 ? 1 : visLines(result).length;
+	}
+	if (firstDiff === 0 && original.length > 0 && result.endsWith(original)) {
+		return firstChangedLine;
+	}
+	return idxToLine(lastRes + 1, result);
+}
+
 export function changedRange(
 	original: string,
 	result: string,
@@ -314,45 +359,13 @@ export function changedRange(
 		};
 	}
 
-	let firstDiff = 0;
-	const minLen = Math.min(original.length, result.length);
-	while (firstDiff < minLen && original[firstDiff] === result[firstDiff]) {
-		firstDiff++;
-	}
-	if (firstDiff === minLen && original.length === result.length) return null;
-
-	let lastOrig = original.length - 1;
-	let lastRes = result.length - 1;
-	while (
-		lastOrig >= firstDiff &&
-		lastRes >= firstDiff &&
-		original[lastOrig] === result[lastRes]
-	) {
-		lastOrig--;
-		lastRes--;
-	}
-
-	function idxToLine(charIdx: number, text: string): number {
-		let line = 1;
-		for (let i = 0; i < charIdx && i < text.length; i++) {
-			if (text[i] === "\n") line++;
-		}
-		return line;
+	const { firstDiff, lastRes } = findChangedBounds(original, result);
+	if (firstDiff === Math.min(original.length, result.length) && original.length === result.length) {
+		return null;
 	}
 
 	const firstChangedLine = idxToLine(firstDiff + 1, result);
-	let lastChangedLine: number;
-	if (lastRes < firstDiff) {
-		lastChangedLine = result.length === 0 ? 1 : visLines(result).length;
-	} else if (
-		firstDiff === 0 &&
-		original.length > 0 &&
-		result.endsWith(original)
-	) {
-		lastChangedLine = firstChangedLine;
-	} else {
-		lastChangedLine = idxToLine(lastRes + 1, result);
-	}
+	const lastChangedLine = resolveLastChangedLine(firstChangedLine, firstDiff, lastRes, original, result);
 
 	return { firstChangedLine, lastChangedLine };
 }
