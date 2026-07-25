@@ -1,183 +1,76 @@
 import { describe, expect, it } from "vitest";
-import { fmtBoundaryWarning, lineHashes } from "../../src/hashline";
-import { } from "../support/fixtures";
+import { applyEdits, resEdits, lineHashes } from "../../src/hashline";
+import { anchorAt } from "../support/fixtures";
 
+describe("boundary duplication [W_DUP] warning", () => {
+  it("warns for trailing duplication (content_lines ends with the next surviving line)", () => {
+    const file = "before\nline1\nline2\nafter\n";
+    const hashes = lineHashes(file);
 
-describe("fmtBoundaryWarning", () => {
-  it("formats a leading duplication warning with header and hashline window", async () => {
-    const resultLines = [
-      "before",
-      "before",
-      "new one",
-      "new two",
-      "after",
-    ];
-    const resultHashes = await lineHashes(resultLines.join("\n"));
+    const result = applyEdits(file, resEdits([
+      { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: ["new1", "new2", "after"] },
+    ]));
 
-    const output = fmtBoundaryWarning({
-      kind: "leading",
-      survivingContent: "before",
-      matchIndex: 1,
-      resultLines,
-      resultHashes,
-    });
-
-    expect(output).toContain("Boundary duplication (leading)");
-    expect(output).toContain(
-      "the first replacement line duplicated the previous line",
-    );
-    expect(output).toContain("│before");
-    expect(output).toContain("│new two");
-    for (const line of output.split("\n")) {
-      if (line.includes("│")) {
-        const hash = line.split("│")[0]!;
-        expect(hash).toMatch(/^\d+:[A-Za-z0-9_-]{2}$/);
-      }
-    }
+    expect(result.warnings?.some((w) => w.startsWith("[W_DUP]") && w.includes("ends with") && w.includes("after"))).toBe(true);
+    expect(result.content).toContain("new2\nafter\nafter");
   });
 
-  it("formats a trailing duplication warning with header and hashline window", async () => {
-    const resultLines = [
-      "before",
-      "old one",
-      "new trailing",
-      "new trailing",
-      "after",
-    ];
-    const resultHashes = await lineHashes(resultLines.join("\n"));
+  it("warns for leading duplication (content_lines starts with the preceding line)", () => {
+    const file = "before\nline1\nline2\nafter\n";
+    const hashes = lineHashes(file);
 
-    const output = fmtBoundaryWarning({
-      kind: "trailing",
-      survivingContent: "new trailing",
-      matchIndex: 3,
-      resultLines,
-      resultHashes,
-    });
+    const result = applyEdits(file, resEdits([
+      { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: ["before", "new1", "new2"] },
+    ]));
 
-    expect(output).toContain("Boundary duplication (trailing)");
-    expect(output).toContain(
-      "the last replacement line duplicated the next line",
-    );
-    expect(output).toContain("│new trailing");
-    expect(output).toContain("│after");
+    expect(result.warnings?.some((w) => w.startsWith("[W_DUP]") && w.includes("starts with") && w.includes("before"))).toBe(true);
+    expect(result.content).toContain("before\nbefore\nnew1");
   });
 
-  it("clamps the window to file start when pair is near line 1", async () => {
-    const resultLines = [
-      "dup",
-      "dup",
-      "middle",
-      "end",
-    ];
-    const resultHashes = await lineHashes(resultLines.join("\n"));
+  it("does not warn when there is no boundary match", () => {
+    const file = "before\nline1\nline2\nafter\n";
+    const hashes = lineHashes(file);
 
-    const output = fmtBoundaryWarning({
-      kind: "leading",
-      survivingContent: "dup",
-      matchIndex: 0,
-      resultLines,
-      resultHashes,
-    });
+    const result = applyEdits(file, resEdits([
+      { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: ["new1", "new2"] },
+    ]));
 
-    const rows = output.split("\n").filter((l) => l.includes("│"));
-    expect(rows[0]).toContain("│dup");
-    expect(rows).toHaveLength(4); // 0..3 (pairStart=0, winStart=0, winEnd=min(3, 0+3)=3, so 0..3 = 4 rows)
+    expect(result.warnings?.some((w) => w.startsWith("[W_DUP]")) ?? false).toBe(false);
   });
 
-  it("clamps the window to file end when pair is near the last line", async () => {
-    const resultLines = [
-      "start",
-      "middle",
-      "dup",
-      "dup",
-    ];
-    const resultHashes = await lineHashes(resultLines.join("\n"));
+  it("warns for both trailing and leading duplication when both boundaries match", () => {
+    const file = "before\nline1\nline2\nafter\n";
+    const hashes = lineHashes(file);
 
-    const output = fmtBoundaryWarning({
-      kind: "trailing",
-      survivingContent: "dup",
-      matchIndex: 3,
-      resultLines,
-      resultHashes,
-    });
+    const result = applyEdits(file, resEdits([
+      { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: ["before", "new1", "after"] },
+    ]));
 
-    const rows = output.split("\n").filter((l) => l.includes("│"));
-    expect(rows[rows.length - 1]).toContain("│dup");
+    const dupWarnings = result.warnings?.filter((w) => w.startsWith("[W_DUP]")) ?? [];
+    expect(dupWarnings).toHaveLength(2);
   });
 
-  it("picks the adjacent pair nearest matchIndex when multiple identical lines exist", async () => {
-    const resultLines = [
-      "dup",
-      "a",
-      "dup",
-      "dup",
-      "dup",
-      "b",
-    ];
-    const resultHashes = await lineHashes(resultLines.join("\n"));
+  it("warns for a duplicated structural delimiter (}), keeping it literal", () => {
+    const file = "if (a) {\n  x();\n}\n}\n";
+    const hashes = lineHashes(file);
 
-    const output = fmtBoundaryWarning({
-      kind: "leading",
-      survivingContent: "dup",
-      matchIndex: 3,
-      resultLines,
-      resultHashes,
-    });
+    const result = applyEdits(file, resEdits([
+      { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["  z();", "}"] },
+    ]));
 
-    const rows = output.split("\n").filter((l) => l.includes("│"));
-    const rowContents = rows.map((r) => r.split("│")[1] ?? "");
-    expect(rowContents).toContain("a");
-    expect(rowContents).toContain("dup");
-    expect(rowContents).toContain("b");
+    expect(result.warnings?.some((w) => w.startsWith("[W_DUP]") && w.includes("}"))).toBe(true);
+    expect(result.content).toContain("  z();\n}\n}\n}");
   });
 
-  it("falls back to matchIndex as pairStart when no adjacent pair is found", async () => {
-    const resultLines = [
-      "alpha",
-      "beta",
-      "gamma",
-    ];
-    const resultHashes = await lineHashes(resultLines.join("\n"));
+  it("references the edit index in the warning for a multi-edit call", () => {
+    const file = "before\nline1\nline2\nafter\n";
+    const hashes = lineHashes(file);
 
-    const output = fmtBoundaryWarning({
-      kind: "leading",
-      survivingContent: "beta",
-      matchIndex: 1,
-      resultLines,
-      resultHashes,
-    });
+    const result = applyEdits(file, resEdits([
+      { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["new1"] },
+      { hash_range_inclusive: [anchorAt(hashes, 3), anchorAt(hashes, 3)], content_lines: ["new2", "after"] },
+    ]));
 
-    expect(output).toContain("│beta");
-    expect(output).toContain("│alpha");
-    expect(output).toContain("│gamma");
-  });
-
-  it("includes exactly 2 lines of context before and after the pair", async () => {
-    const resultLines = [
-      "ctx1",
-      "ctx2",
-      "dup",
-      "dup",
-      "ctx3",
-      "ctx4",
-    ];
-    const resultHashes = await lineHashes(resultLines.join("\n"));
-
-    const output = fmtBoundaryWarning({
-      kind: "trailing",
-      survivingContent: "dup",
-      matchIndex: 2,
-      resultLines,
-      resultHashes,
-    });
-
-    const rows = output.split("\n").filter((l) => l.includes("│"));
-    expect(rows).toHaveLength(6); // 2 before + 2 dup + 2 after
-    expect(rows[0]).toContain("│ctx1");
-    expect(rows[1]).toContain("│ctx2");
-    expect(rows[2]).toContain("│dup");
-    expect(rows[3]).toContain("│dup");
-    expect(rows[4]).toContain("│ctx3");
-    expect(rows[5]).toContain("│ctx4");
+    expect(result.warnings?.some((w) => w.startsWith("[W_DUP] Edit 1:"))).toBe(true);
   });
 });

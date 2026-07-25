@@ -24,7 +24,6 @@ export {
 	type HTEdit,
 	type NEdit,
 	type BDupWarn,
-	type AutoFix,
 	descEdit,
 	resEdits,
 	valEdits,
@@ -36,5 +35,4 @@ export {
 	applyEdits,
 	fmtRegion,
 	changedRange,
-	fmtBoundaryWarning,
 } from "./apply";

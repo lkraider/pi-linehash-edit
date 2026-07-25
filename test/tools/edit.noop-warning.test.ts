@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { lineHashes } from "../../src/hashline";
-import { withTempFile, setupIntegrationTest, anchorAt } from "../support/fixtures";
+import { withTempFile, setupIntegrationTest, anchorAt, getText } from "../support/fixtures";
 
 
 describe("edit tool noop + warnings", () => {
@@ -23,12 +23,12 @@ describe("edit tool noop + warnings", () => {
     });
   });
 
-  it("auto-fixes trailing duplicate silently, file is correct", async () => {
+  it("warns on trailing duplicate instead of auto-fixing silently", async () => {
     await withTempFile("sample.ts", "aaa\nbbb\nccc\n", async ({ cwd, path }) => {
       const { ctx, editTool } = setupIntegrationTest(cwd);
-      const hashes = await lineHashes("aaa\nbbb\nccc\n");
+      const hashes = lineHashes("aaa\nbbb\nccc\n");
 
-      await editTool.execute(
+      const result = await editTool.execute(
         "e1",
         {
           path: "sample.ts",
@@ -39,9 +39,12 @@ describe("edit tool noop + warnings", () => {
         ctx,
       );
 
+      expect(result.details.classification).not.toBe("noop");
+      expect(getText(result)).toMatch(/\[W_DUP\]/);
+
       const { readFile } = await import("fs/promises");
       const content = await readFile(path, "utf-8");
-      expect(content).toBe("aaa\nBBB\nccc\n");
+      expect(content).toBe("aaa\nBBB\nccc\nccc\n");
     });
   });
 });

@@ -48,80 +48,74 @@ describe("resAnchor (via valEdits)", () => {
   });
 });
 
-describe("checkBoundaryDup (via valEdits) — auto-fix", () => {
-  it("auto-fixes trailing duplication", async () => {
+describe("checkBoundaryDup (via valEdits) — [W_DUP] warning, no auto-fix", () => {
+  it("warns on trailing duplication, keeps the duplicate literally", () => {
     const content = "a\nb\nc\nd";
-    const hashes = await lineHashes(content);
+    const hashes = lineHashes(content);
     const result = applyEdits(content, resEdits([
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: ["X", "d"] },
     ]));
-    expect(result.content).toBe("a\nX\nd");
-    expect(result.autoFixes).toBeDefined();
-    expect(result.autoFixes).toHaveLength(1);
-    expect(result.autoFixes![0]!.kind).toBe("trailing");
+    expect(result.content).toBe("a\nX\nd\nd");
+    expect(result.warnings?.some((w) => w.startsWith("[W_DUP]") && w.includes("ends with"))).toBe(true);
   });
 
-  it("auto-fixes leading duplication", async () => {
+  it("warns on leading duplication, keeps the duplicate literally", () => {
     const content = "a\nb\nc\nd";
-    const hashes = await lineHashes(content);
+    const hashes = lineHashes(content);
     const result = applyEdits(content, resEdits([
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: ["a", "X"] },
     ]));
-    expect(result.content).toBe("a\nX\nd");
-    expect(result.autoFixes).toHaveLength(1);
-    expect(result.autoFixes![0]!.kind).toBe("leading");
+    expect(result.content).toBe("a\na\nX\nd");
+    expect(result.warnings?.some((w) => w.startsWith("[W_DUP]") && w.includes("starts with"))).toBe(true);
   });
 
-  it("does not auto-fix when replacement does not duplicate adjacent lines", async () => {
+  it("does not warn when replacement does not duplicate adjacent lines", () => {
     const content = "a\nb\nc\nd";
-    const hashes = await lineHashes(content);
+    const hashes = lineHashes(content);
     const result = applyEdits(content, resEdits([
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: ["X", "Y"] },
     ]));
-    expect(result.autoFixes ?? []).toHaveLength(0);
+    expect(result.warnings?.some((w) => w.startsWith("[W_DUP]")) ?? false).toBe(false);
   });
 
-  it("does not auto-fix when replacement edge is empty string", async () => {
+  it("does not warn when replacement edge is empty string", () => {
     const content = "a\nb\nc\nd";
-    const hashes = await lineHashes(content);
+    const hashes = lineHashes(content);
     const result = applyEdits(content, resEdits([
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: [] },
     ]));
-    expect(result.autoFixes ?? []).toHaveLength(0);
+    expect(result.warnings?.some((w) => w.startsWith("[W_DUP]")) ?? false).toBe(false);
   });
 
-  it("auto-fixes trailing duplication when content_lines has trailing empty lines", async () => {
+  it("warns on trailing duplication when content_lines has trailing empty lines", () => {
     const content = "a\nb\nc\nd";
-    const hashes = await lineHashes(content);
+    const hashes = lineHashes(content);
     const result = applyEdits(content, resEdits([
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: ["X", "d", ""] },
     ]));
-    expect(result.content).toBe("a\nX\n\nd");
-    expect(result.autoFixes).toHaveLength(1);
-    expect(result.autoFixes![0]!.kind).toBe("trailing");
-    expect(result.autoFixes![0]!.removedLine).toBe("d");
+    expect(result.content).toBe("a\nX\nd\n\nd");
+    expect(result.warnings?.some((w) => w.startsWith("[W_DUP]") && w.includes("ends with") && w.includes("d"))).toBe(true);
   });
 
-  it("auto-fixes leading duplication when content_lines has leading empty lines", async () => {
+  it("warns on leading duplication when content_lines has leading empty lines", () => {
     const content = "a\nb\nc\nd";
-    const hashes = await lineHashes(content);
+    const hashes = lineHashes(content);
     const result = applyEdits(content, resEdits([
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: ["", "a", "X"] },
     ]));
-    expect(result.content).toBe("a\n\nX\nd");
-    expect(result.autoFixes).toHaveLength(1);
-    expect(result.autoFixes![0]!.kind).toBe("leading");
-    expect(result.autoFixes![0]!.removedLine).toBe("a");
+    expect(result.content).toBe("a\n\na\nX\nd");
+    expect(result.warnings?.some((w) => w.startsWith("[W_DUP]") && w.includes("starts with") && w.includes("a"))).toBe(true);
   });
 
-  it("auto-fixes both trailing and leading in one edit", async () => {
+  it("warns twice when both trailing and leading duplicate in one edit", () => {
     const content = "a\nb\nc\nd";
-    const hashes = await lineHashes(content);
+    const hashes = lineHashes(content);
     const result = applyEdits(content, resEdits([
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: ["a", "d"] },
     ]));
-    expect(result.content).toBe("a\nd");
-    expect(result.autoFixes).toHaveLength(2);
+    expect(result.content).toBe("a\na\nd\nd");
+    const dupWarnings = result.warnings?.filter((w) => w.startsWith("[W_DUP]")) ?? [];
+    expect(dupWarnings).toHaveLength(2);
   });
 });
 
@@ -256,39 +250,35 @@ describe("resSpans (via applyEdits)", () => {
   });
 });
 
-describe("auto-fix via applyEdits", () => {
-  it("auto-fixes trailing duplication", async () => {
+describe("[W_DUP] warning via applyEdits", () => {
+  it("warns on trailing duplication, keeps the duplicate literally", () => {
     const content = "before\nold one\nold two\nafter";
-    const hashes = await lineHashes(content);
+    const hashes = lineHashes(content);
     const result = applyEdits(content, resEdits([
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: ["new one", "new two", "after"] },
     ]));
-    expect(result.autoFixes).toHaveLength(1);
-    expect(result.autoFixes![0]!.kind).toBe("trailing");
-    expect(result.autoFixes![0]!.removedLine).toBe("after");
-    expect(result.content).toBe("before\nnew one\nnew two\nafter");
+    expect(result.warnings?.some((w) => w.startsWith("[W_DUP]") && w.includes("ends with") && w.includes("after"))).toBe(true);
+    expect(result.content).toBe("before\nnew one\nnew two\nafter\nafter");
   });
 
-  it("auto-fixes leading duplication", async () => {
+  it("warns on leading duplication, keeps the duplicate literally", () => {
     const content = "before\nold one\nold two\nafter";
-    const hashes = await lineHashes(content);
+    const hashes = lineHashes(content);
     const result = applyEdits(content, resEdits([
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: ["before", "new one", "new two"] },
     ]));
-    expect(result.autoFixes).toHaveLength(1);
-    expect(result.autoFixes![0]!.kind).toBe("leading");
-    expect(result.autoFixes![0]!.removedLine).toBe("before");
-    expect(result.content).toBe("before\nnew one\nnew two\nafter");
+    expect(result.warnings?.some((w) => w.startsWith("[W_DUP]") && w.includes("starts with") && w.includes("before"))).toBe(true);
+    expect(result.content).toBe("before\nbefore\nnew one\nnew two\nafter");
   });
 
-  it("auto-fixes both leading and trailing in one edit", async () => {
+  it("warns twice when both leading and trailing duplicate in one edit", () => {
     const content = "ctx1\nctx2\nold1\nold2\nctx3\nctx4";
-    const hashes = await lineHashes(content);
+    const hashes = lineHashes(content);
     const result = applyEdits(content, resEdits([
       { hash_range_inclusive: [anchorAt(hashes, 3), anchorAt(hashes, 4)], content_lines: ["ctx2", "dup", "dup", "ctx3"] },
     ]));
-    expect(result.autoFixes).toBeDefined();
-    expect(result.autoFixes).toHaveLength(2);
-    expect(result.content).toBe("ctx1\nctx2\ndup\ndup\nctx3\nctx4");
+    const dupWarnings = result.warnings?.filter((w) => w.startsWith("[W_DUP]")) ?? [];
+    expect(dupWarnings).toHaveLength(2);
+    expect(result.content).toBe("ctx1\nctx2\nctx2\ndup\ndup\nctx3\nctx3\nctx4");
   });
 });
