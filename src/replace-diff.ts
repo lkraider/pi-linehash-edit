@@ -44,6 +44,71 @@ function fmtDiffLine(
   return `${prefix}${anchor}${HASH_SEP}${line}`;
 }
 
+const ELLIPSIS = "__ELLIPSIS__";
+
+type ContextWindow = { linesToShow: string[]; skipStart: number; skipMiddle: number };
+
+function windowContext(
+  displayLines: string[],
+  afterChange: boolean,
+  beforeChange: boolean,
+  contextLines: number,
+): ContextWindow {
+  if (!afterChange) {
+    const skipStart = Math.max(0, displayLines.length - contextLines);
+    return { linesToShow: displayLines.slice(skipStart), skipStart, skipMiddle: 0 };
+  }
+  if (beforeChange && displayLines.length > contextLines * 2) {
+    const tail = displayLines.slice(-contextLines);
+    const linesToShow = [...displayLines.slice(0, contextLines), ELLIPSIS, ...tail];
+    return { linesToShow, skipStart: 0, skipMiddle: displayLines.length - contextLines * 2 };
+  }
+  if (displayLines.length > contextLines) {
+    return { linesToShow: displayLines.slice(0, contextLines), skipStart: 0, skipMiddle: 0 };
+  }
+  return { linesToShow: displayLines, skipStart: 0, skipMiddle: 0 };
+}
+
+function emitChangeLines(
+  output: string[],
+  displayLines: string[],
+  added: boolean,
+  hashes: string[],
+  newLineNum: number,
+): number {
+  for (const line of displayLines) {
+    if (added) {
+      output.push(fmtDiffLine("+", line, anchorAt(hashes, newLineNum)));
+      newLineNum++;
+    } else {
+      output.push(fmtDiffLine("-", line, undefined));
+    }
+  }
+  return newLineNum;
+}
+
+function emitContextLines(
+  output: string[],
+  window: ContextWindow,
+  hashes: string[],
+  newLineNum: number,
+): number {
+  if (window.skipStart > 0) {
+    output.push(" ...");
+    newLineNum += window.skipStart;
+  }
+  for (const line of window.linesToShow) {
+    if (line === ELLIPSIS) {
+      output.push(" ...");
+      newLineNum += window.skipMiddle;
+      continue;
+    }
+    output.push(fmtDiffLine(" ", line, anchorAt(hashes, newLineNum)));
+    newLineNum++;
+  }
+  return newLineNum;
+}
+
 export function genDiff(
   oldContent: string,
   newContent: string,
@@ -67,14 +132,7 @@ export function genDiff(
 
     if (part.added || part.removed) {
       if (firstChangedLine === undefined) firstChangedLine = newLineNum;
-      for (let k = 0; k < displayLines.length; k++) {
-        if (part.added) {
-          output.push(fmtDiffLine("+", displayLines[k]!, anchorAt(effectiveNewHashes, newLineNum)));
-          newLineNum++;
-        } else {
-          output.push(fmtDiffLine("-", displayLines[k]!, undefined));
-        }
-      }
+      newLineNum = emitChangeLines(output, displayLines, !!part.added, effectiveNewHashes, newLineNum);
       lastWasChange = true;
       continue;
     }
@@ -82,34 +140,8 @@ export function genDiff(
     const nextPartIsChange =
       i < parts.length - 1 && (parts[i + 1]!.added || parts[i + 1]!.removed);
     if (lastWasChange || nextPartIsChange) {
-      let linesToShow = displayLines;
-      let skipStart = 0;
-      let skipMiddle = 0;
-
-      if (!lastWasChange) {
-        skipStart = Math.max(0, displayLines.length - contextLines);
-        linesToShow = displayLines.slice(skipStart);
-      } else if (nextPartIsChange && displayLines.length > contextLines * 2) {
-        const tail = displayLines.slice(-contextLines);
-        linesToShow = [...displayLines.slice(0, contextLines), "__ELLIPSIS__", ...tail];
-        skipMiddle = displayLines.length - contextLines * 2;
-      } else if (linesToShow.length > contextLines) {
-        linesToShow = linesToShow.slice(0, contextLines);
-      }
-
-      if (skipStart > 0) {
-        output.push(" ...");
-        newLineNum += skipStart;
-      }
-      for (const line of linesToShow) {
-        if (line === "__ELLIPSIS__") {
-          output.push(" ...");
-          newLineNum += skipMiddle;
-          continue;
-        }
-        output.push(fmtDiffLine(" ", line, anchorAt(effectiveNewHashes, newLineNum)));
-        newLineNum++;
-      }
+      const window = windowContext(displayLines, lastWasChange, nextPartIsChange, contextLines);
+      newLineNum = emitContextLines(output, window, effectiveNewHashes, newLineNum);
     } else {
       newLineNum += displayLines.length;
     }
