@@ -10,6 +10,18 @@ import {
 } from "./src/config";
 import { readNormFile } from "./src/file-reader";
 
+function extractAutoReadPath(
+  event: { isError?: boolean; toolName: string; input: unknown },
+  autoRead: boolean,
+): string | undefined {
+  if (!autoRead) return undefined;
+  if (event.isError) return undefined;
+  if (event.toolName !== "write" && event.toolName !== "replace") return undefined;
+
+  const filePath = (event.input as Record<string, unknown>)?.path;
+  return typeof filePath === "string" ? filePath : undefined;
+}
+
 export default function (pi: ExtensionAPI): void {
   regRead(pi);
 
@@ -61,12 +73,8 @@ function registerReplaceTool(pi: ExtensionAPI, mode: string, autoRead?: boolean)
   });
 
   pi.on("tool_result", async (event, ctx) => {
-    if (!autoRead) return;
-    if (event.isError) return;
-    if (event.toolName !== "write" && event.toolName !== "replace") return;
-
-    const filePath = (event.input as Record<string, unknown>)?.path;
-    if (typeof filePath !== "string") return;
+    const filePath = extractAutoReadPath(event, autoRead);
+    if (!filePath) return;
 
     try {
       const { normalized, fileHashes, absolutePath } = await readNormFile(filePath, ctx.cwd, undefined);
