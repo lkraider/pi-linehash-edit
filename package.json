@@ -1,6 +1,6 @@
 {
   "name": "pi-linehash-edit",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "Strict read/replace tool for pi-coding-agent with line:hash-anchored edits — position is the address, the hash is only a drift checksum",
   "main": "index.ts",
