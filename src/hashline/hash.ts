@@ -5,9 +5,7 @@ import {
   getSnapshot,
   upsertSnapshot,
 } from "../hash-store";
-import { xxh32, contentChecksum, initHasher } from "./hasher";
-
-export { initHasher };
+import { fnv1a32 } from "./hasher";
 
 export const HASH_LEN = 3;
 export const ANCHOR_LEN = HASH_LEN;
@@ -54,11 +52,11 @@ function canon(line: string): string {
 
 function nextUniqueHash(content: string, used: Set<string>): string {
 	let retry = 0;
-	let hash = h2s(xxh32(content));
+	let hash = h2s(fnv1a32(content));
 	while (used.has(hash)) {
 		retry++;
 		if (retry > MAX_HASH_RETRIES) throw new Error("Hash space exhausted");
-		hash = h2s(xxh32(`${content}:R${retry}`));
+		hash = h2s(fnv1a32(`${content}:R${retry}`));
 	}
 	used.add(hash);
 	return hash;
@@ -96,7 +94,7 @@ export async function lineHashes(
       previous.removedHashes,
     );
     if (persist !== false) {
-      upsertSnapshot(hashStore, path, contentChecksum(content), content.split("\n").length, newHashes);
+      upsertSnapshot(hashStore, path, content, newHashes);
     }
     return newHashes;
   }
@@ -108,7 +106,7 @@ export async function lineHashes(
 
   const newHashes = _lineHashesPure(content);
   if (persist !== false) {
-    upsertSnapshot(hashStore, path, contentChecksum(content), content.split("\n").length, newHashes);
+    upsertSnapshot(hashStore, path, content, newHashes);
   }
   return newHashes;
 }

@@ -1,5 +1,4 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { initHasher } from "./src/hashline";
 import { regReplace, regReplaceFlat } from "./src/replace";
 import { regReplaceUndo } from "./src/replace-undo";
 import { regRead, fmtReadPreview } from "./src/read";
@@ -10,7 +9,6 @@ import {
   toggleReplaceMode,
   toggleAutoRead,
 } from "./src/config";
-import { loadHashStore, pruneMissing } from "./src/hash-store";
 import { readNormFile } from "./src/file-reader";
 
 export default function (pi: ExtensionAPI): void {
@@ -33,13 +31,6 @@ function registerReplaceTool(pi: ExtensionAPI, mode: string, autoRead?: boolean)
   pi.on("session_start", async (_event, ctx) => {
     const active = pi.getActiveTools();
     pi.setActiveTools(active.filter((t) => t !== "edit"));
-    await initHasher();
-    try {
-      const store = await loadHashStore();
-      await pruneMissing(store);
-    } catch (err) {
-      console.error("Failed to load or prune hash store:", err);
-    }
     const config = await readConfig();
     const mode = config.replaceMode;
     autoRead = config.autoRead;

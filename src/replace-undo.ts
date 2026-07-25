@@ -3,7 +3,6 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { loadHashStore, upsertSnapshot } from "./hash-store";
-import { contentChecksum } from "./hashline/hasher";
 import { resolveTarget, writeAtomic } from "./fs-write";
 import { toCwd } from "./paths";
 import { toLF, stripBOM, genDiff, restoreEndings } from "./replace-diff";
@@ -83,7 +82,7 @@ export function regReplaceUndo(pi: ExtensionAPI): void {
         );
 
         const store = await loadHashStore();
-        upsertSnapshot(store, mutationTargetPath, contentChecksum(undo.content), undo.content.split("\n").length, undo.hashes);
+        upsertSnapshot(store, mutationTargetPath, undo.content, undo.hashes);
 
         clearUndo(mutationTargetPath);
 

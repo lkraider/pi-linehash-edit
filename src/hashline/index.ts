@@ -9,7 +9,6 @@ export {
 	HL_BARE_PREFIX_RE,
 	lineHashes,
 	_lineHashesPure,
-	initHasher,
 } from "./hash";
 
 export {

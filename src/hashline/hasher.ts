@@ -1,33 +1,8 @@
-import xxhash from "xxhash-wasm";
-
-export type Hasher = {
-	h32(input: string, seed?: number): number;
-	h64ToString(input: string, seed?: bigint): string;
-};
-
-let hasher: Hasher | null = null;
-
-export function getH(): Hasher {
-	if (hasher) return hasher;
-	throw new Error("xxhash-wasm not initialized yet. This should not happen.");
-}
-
-const hasherP: Promise<Hasher> = xxhash().then((h) => {
-	hasher = h as unknown as Hasher;
-	return hasher;
-}).catch((err: unknown) => {
-	console.error("xxhash-wasm initialization failed:", err);
-	throw err;
-});
-
-export function initHasher(): Promise<Hasher> {
-	return hasherP;
-}
-
-export function xxh32(input: string, seed = 0): number {
-	return getH().h32(input, seed) >>> 0;
-}
-
-export function contentChecksum(content: string): string {
-	return getH().h64ToString(content);
+export function fnv1a32(input: string): number {
+	let h = 0x811c9dc5;
+	for (let i = 0; i < input.length; i++) {
+		h ^= input.charCodeAt(i);
+		h = Math.imul(h, 0x01000193);
+	}
+	return h >>> 0;
 }

@@ -1,5 +1,5 @@
 import { homedir } from "os";
-import { isAbsolute, resolve as resolvePath, join, dirname } from "path";
+import { isAbsolute, resolve as resolvePath, join } from "path";
 
 
 function homeBase(): string {
@@ -13,18 +13,6 @@ export function configDir(): string {
 
 export function configPath(): string {
   return join(configDir(), "config.json");
-}
-
-export function hashStorePath(): string {
-  return join(configDir(), "hash-store.sqlite");
-}
-
-export function legacyHashStorePath(): string {
-  return join(configDir(), "hash-store.json");
-}
-
-export function hashStoreDir(): string {
-  return dirname(hashStorePath());
 }
 
 function expand(filePath: string): string {

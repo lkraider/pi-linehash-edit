@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, rm, writeFile } from "fs/promises";
 import { join } from "path";
 import { beforeAll, afterAll, vi } from "vitest";
-import { _lineHashesPure, initHasher } from "../../src/hashline";
+import { _lineHashesPure } from "../../src/hashline";
 import { Compile } from "typebox/compile";
 import register from "../../index";
 import { regReplace, regReplaceFlat } from "../../src/replace";
@@ -17,7 +17,6 @@ export async function setupTestHome(): Promise<{
   testPath: string;
   cleanup: () => Promise<void>;
 }> {
-  await initHasher();
   const tmpHome = await mkdtemp(join(await getWritableTempRoot(), "testhome-"));
   vi.stubEnv('HOME', tmpHome);
   const testPath = join(tmpHome, "test.txt");
