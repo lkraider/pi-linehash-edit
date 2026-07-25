@@ -11,6 +11,7 @@ import {
 	copyFile,
 } from "fs/promises";
 import { dirname, join, parse, resolve, sep } from "path";
+import type { Stats } from "fs";
 import { errCode } from "./utils";
 
 export async function resolveTarget(path: string): Promise<string> {
@@ -71,30 +72,21 @@ export async function resolveTarget(path: string): Promise<string> {
   return resParts(root, parts);
 }
 
-export async function writeAtomic(
-  path: string,
-  content: string,
-): Promise<void> {
-  const targetPath = await resolveTarget(path);
-
-  let existingStats: Awaited<ReturnType<typeof stat>> | null = null;
+async function statOrNull(path: string): Promise<Stats | null> {
   try {
-    existingStats = await stat(targetPath);
+    return await stat(path);
   } catch (error: unknown) {
-    if (errCode(error) !== "ENOENT") {
-      throw error;
-    }
+    if (errCode(error) === "ENOENT") return null;
+    throw error;
   }
+}
 
-  if (existingStats && existingStats.nlink > 1) {
-    await writeFile(targetPath, content, "utf-8");
-    return;
-  }
-
-  const dir = dirname(targetPath);
-  const tempPath = join(dir, `.tmp-${randomUUID()}`);
-  await mkdir(dir, { recursive: true });
-  const tempHandle = await open(tempPath, "wx", 0o600);
+async function writeTempFile(
+  tempHandle: Awaited<ReturnType<typeof open>>,
+  tempPath: string,
+  content: string,
+  existingStats: Stats | null,
+): Promise<void> {
   try {
     await tempHandle.writeFile(content, "utf-8");
     if (existingStats) {
@@ -105,6 +97,13 @@ export async function writeAtomic(
     try { await rm(tempPath, { force: true }); } catch {}
     throw error;
   }
+}
+
+async function finalizeRename(
+  tempHandle: Awaited<ReturnType<typeof open>>,
+  tempPath: string,
+  targetPath: string,
+): Promise<void> {
   try {
     await tempHandle.close();
     await rename(tempPath, targetPath);
@@ -123,4 +122,24 @@ export async function writeAtomic(
     try { await rm(tempPath, { force: true }); } catch {}
     throw error;
   }
+}
+
+export async function writeAtomic(
+  path: string,
+  content: string,
+): Promise<void> {
+  const targetPath = await resolveTarget(path);
+  const existingStats = await statOrNull(targetPath);
+
+  if (existingStats && existingStats.nlink > 1) {
+    await writeFile(targetPath, content, "utf-8");
+    return;
+  }
+
+  const dir = dirname(targetPath);
+  const tempPath = join(dir, `.tmp-${randomUUID()}`);
+  await mkdir(dir, { recursive: true });
+  const tempHandle = await open(tempPath, "wx", 0o600);
+  await writeTempFile(tempHandle, tempPath, content, existingStats);
+  await finalizeRename(tempHandle, tempPath, targetPath);
 }
