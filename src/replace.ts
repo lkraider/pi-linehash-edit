@@ -285,6 +285,44 @@ const MODE_CFG = {
   },
 } as const;
 
+function resetPreviewState(context: any): void {
+  context.state.argsKey = undefined;
+  context.state.preview = undefined;
+  context.state.previewGeneration = (context.state.previewGeneration ?? 0) + 1;
+}
+
+function schedulePreviewFetch(
+  context: any,
+  previewInput: ReqParams,
+  flat: boolean,
+): void {
+  const argsKey = JSON.stringify(previewInput);
+  if (context.state.argsKey === argsKey) return;
+
+  context.state.argsKey = argsKey;
+  context.state.preview = undefined;
+  const previewGeneration = (context.state.previewGeneration ?? 0) + 1;
+  context.state.previewGeneration = previewGeneration;
+
+  const isStale = () =>
+    context.state.argsKey !== argsKey ||
+    context.state.previewGeneration !== previewGeneration;
+
+  compPreview(previewInput, context.cwd, flat)
+    .then((preview) => {
+      if (isStale()) return;
+      context.state.preview = preview;
+      context.invalidate();
+    })
+    .catch((err: unknown) => {
+      if (isStale()) return;
+      context.state.preview = {
+        error: err instanceof Error ? err.message : String(err),
+      };
+      context.invalidate();
+    });
+}
+
 export function buildToolDef(opts: { flat: boolean; autoRead?: boolean }): ToolDef {
   const autoRead = opts.autoRead ?? false;
   const readGuidance = autoRead
@@ -333,45 +371,10 @@ export function buildToolDef(opts: { flat: boolean; autoRead?: boolean }): ToolD
     renderShell: "default",
     renderCall(args, theme, context) {
       const previewInput = getPreviewInput(args);
-      if (context.executionStarted) {
-        context.state.argsKey = undefined;
-        context.state.preview = undefined;
-        context.state.previewGeneration =
-          (context.state.previewGeneration ?? 0) + 1;
-      } else if (!context.argsComplete || !previewInput) {
-        context.state.argsKey = undefined;
-        context.state.preview = undefined;
-        context.state.previewGeneration =
-          (context.state.previewGeneration ?? 0) + 1;
+      if (context.executionStarted || !context.argsComplete || !previewInput) {
+        resetPreviewState(context);
       } else {
-        const argsKey = JSON.stringify(previewInput);
-        if (context.state.argsKey !== argsKey) {
-          context.state.argsKey = argsKey;
-          context.state.preview = undefined;
-          const previewGeneration = (context.state.previewGeneration ?? 0) + 1;
-          context.state.previewGeneration = previewGeneration;
-          compPreview(previewInput, context.cwd, opts.flat)
-            .then((preview) => {
-              if (
-                context.state.argsKey === argsKey &&
-                context.state.previewGeneration === previewGeneration
-              ) {
-                context.state.preview = preview;
-                context.invalidate();
-              }
-            })
-            .catch((err: unknown) => {
-              if (
-                context.state.argsKey === argsKey &&
-                context.state.previewGeneration === previewGeneration
-              ) {
-                context.state.preview = {
-                  error: err instanceof Error ? err.message : String(err),
-                };
-                context.invalidate();
-              }
-            });
-        }
+        schedulePreviewFetch(context, previewInput, opts.flat);
       }
       const text =
         (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
