@@ -11,37 +11,12 @@ import {
 	type ParsedEdit,
 } from "./resolve";
 
-type LineIndex = {
-	fileLines: string[];
-	lineStarts: number[];
-};
-
-export function buildLineIndex(content: string): LineIndex {
-	const fileLines = content.split("\n");
-	const lineStarts: number[] = [];
-	let offset = 0;
-
-	for (let index = 0; index < fileLines.length; index++) {
-		lineStarts.push(offset);
-		offset += fileLines[index]!.length;
-		if (index < fileLines.length - 1) {
-			offset += 1;
-		}
-	}
-
-	return {
-		fileLines,
-		lineStarts,
-	};
-};
-
-type ReplaceSpan = {
-	kind: "replace";
+type LineSpan = {
 	index: number;
 	label: string;
-	start: number;
-	end: number;
-	replacement: string;
+	startLine: number;
+	endLine: number;
+	replacement: string[];
 };
 
 function assertNotEmpty(originalContent: string, result: string): void {
@@ -65,12 +40,9 @@ function throwConflict(
 function editToSpan(
   edit: ResolvedEdit,
   index: number,
-  content: string,
-  lineIndex: LineIndex,
+  fileLines: string[],
   noopEdits: NoopEdit[],
-): ReplaceSpan | null {
-  const { fileLines, lineStarts } = lineIndex;
-
+): LineSpan | null {
   const startLine = edit.hash_range_inclusive[0].line;
   const endLine = edit.hash_range_inclusive[1].line;
   const originalLines = fileLines.slice(startLine - 1, endLine);
@@ -88,52 +60,16 @@ function editToSpan(
     return null;
   }
 
-  const label = describeEdit(edit);
-
-  if (edit.content_lines.length > 0) {
-    return {
-      kind: "replace",
-      index,
-      label,
-      start: lineStarts[startLine - 1]!,
-      end: lineStarts[endLine - 1]! + fileLines[endLine - 1]!.length,
-      replacement: edit.content_lines.join("\n"),
-    };
-  }
-
-  if (startLine === 1 && endLine === fileLines.length) {
-    return {
-      kind: "replace",
-      index,
-      label,
-      start: 0,
-      end: content.length,
-      replacement: "",
-    };
-  }
-
-  if (endLine < fileLines.length) {
-    return {
-      kind: "replace",
-      index,
-      label,
-      start: lineStarts[startLine - 1]!,
-      end: lineStarts[endLine]!,
-      replacement: "",
-    };
-  }
-
   return {
-    kind: "replace",
     index,
-    label,
-    start: Math.max(0, lineStarts[startLine - 1]! - 1),
-    end: lineStarts[endLine - 1]! + fileLines[endLine - 1]!.length,
-    replacement: "",
+    label: describeEdit(edit),
+    startLine,
+    endLine,
+    replacement: edit.content_lines,
   };
 }
 
-function assertNoConflict(spans: ReplaceSpan[]): void {
+function assertNoConflict(spans: LineSpan[]): void {
 	for (let leftIndex = 0; leftIndex < spans.length; leftIndex++) {
 		const left = spans[leftIndex]!;
 		for (
@@ -143,7 +79,7 @@ function assertNoConflict(spans: ReplaceSpan[]): void {
 		) {
 			const right = spans[rightIndex]!;
 
-			if (left.start < right.end && right.start < left.end) {
+			if (left.startLine <= right.endLine && right.startLine <= left.endLine) {
 				throwConflict(
 					left,
 					right,
@@ -156,28 +92,21 @@ function assertNoConflict(spans: ReplaceSpan[]): void {
 
 function editsToSpans(
 	edits: ResolvedEdit[],
-	content: string,
-	lineIndex: LineIndex,
+	fileLines: string[],
 	noopEdits: NoopEdit[],
 	signal: AbortSignal | undefined,
-): ReplaceSpan[] {
+): LineSpan[] {
 	const seenSpanKeys = new Set<string>();
-	const resolvedSpans: ReplaceSpan[] = [];
+	const resolvedSpans: LineSpan[] = [];
 	for (const [index, edit] of edits.entries()) {
-	abortIf(signal);
-		const span = editToSpan(
-			edit,
-			index,
-			content,
-			lineIndex,
-			noopEdits,
-		);
+		abortIf(signal);
+		const span = editToSpan(edit, index, fileLines, noopEdits);
 		if (!span) {
 			continue;
 		}
 
 		const spanKey =
-				`replace:${span.start}:${span.end}:${span.replacement}`;
+				`${span.startLine}:${span.endLine}:${span.replacement.join("\n")}`;
 		if (seenSpanKeys.has(spanKey)) {
 			continue;
 		}
@@ -186,26 +115,26 @@ function editsToSpans(
 	}
 
 	assertNoConflict(resolvedSpans);
-	return [...resolvedSpans].sort((left, right) => {
-		if (right.end !== left.end) {
-			return right.end - left.end;
-		}
-		return left.index - right.index;
-	});
+	return [...resolvedSpans].sort(
+		(left, right) => right.startLine - left.startLine,
+	);
 }
 
 function assemble(
-	content: string,
-	spans: ReplaceSpan[],
+	fileLines: string[],
+	spans: LineSpan[],
 	signal: AbortSignal | undefined,
 ): string {
-	let result = content;
+	const result = [...fileLines];
 	for (const span of spans) {
 		abortIf(signal);
-		result =
-			result.slice(0, span.start) + span.replacement + result.slice(span.end);
+		result.splice(
+			span.startLine - 1,
+			span.endLine - span.startLine + 1,
+			...span.replacement,
+		);
 	}
-	return result;
+	return result.join("\n");
 }
 
 export function applyEdits(
@@ -229,21 +158,21 @@ export function applyEdits(
 			lastChangedLine: undefined,
 		};
 
-	const lineIndex = buildLineIndex(content);
+	const fileLines = content.split("\n");
 	const fileHashes = precomputedHashes ?? lineHashes(content);
 	const noopEdits: NoopEdit[] = [];
 	const warnings: string[] = [];
 
 	const { resolved, mismatches, boundaryWarnings } = resolveEdits(
 		edits,
-		lineIndex.fileLines,
+		fileLines,
 		fileHashes,
 		warnings,
 		signal,
 	);
 	if (mismatches.length) {
 		throw new Error(
-			formatMismatch(mismatches, lineIndex.fileLines, fileHashes, filePath),
+			formatMismatch(mismatches, fileLines, fileHashes, filePath),
 		);
 	}
 
@@ -258,15 +187,9 @@ export function applyEdits(
 		);
 	}
 
-	const orderedSpans = editsToSpans(
-		resolved,
-		content,
-		lineIndex,
-		noopEdits,
-		signal,
-	);
+	const orderedSpans = editsToSpans(resolved, fileLines, noopEdits, signal);
 
-	const result = assemble(content, orderedSpans, signal);
+	const result = assemble(fileLines, orderedSpans, signal);
 	assertNotEmpty(content, result);
 	const range = changedRange(content, result);
 

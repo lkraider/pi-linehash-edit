@@ -29,7 +29,6 @@ export {
 	formatMismatch,
 } from "./resolve";
 export {
-	buildLineIndex,
 	applyEdits,
 	formatRegion,
 	changedRange,
