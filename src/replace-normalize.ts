@@ -76,6 +76,11 @@ export function normReq(input: unknown): unknown {
     tryParseContentLines(record, "content_lines");
   }
 
+  if (has(record, "changes") && has(record, "edits")) {
+    throw new Error(
+      '[E_BAD_SHAPE] Edit request contains both "changes" and "edits"; provide "changes" only.',
+    );
+  }
   normalizeField(record, "changes", "changes");
   normalizeField(record, "edits", "changes");
 
