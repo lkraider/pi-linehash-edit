@@ -1,20 +1,21 @@
 {
-  "name": "pi-hashline-edit-pro",
-  "version": "0.17.9",
+  "name": "pi-linehash-edit",
+  "version": "0.1.0",
   "type": "module",
-  "description": "Strict hashline read/replace tool for pi-coding-agent with hash-anchored edits (3-char, 18-bit, perfect hashing)",
+  "description": "Strict read/replace tool for pi-coding-agent with line:hash-anchored edits — position is the address, the hash is only a drift checksum",
   "main": "index.ts",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YuGiMob/pi-hashline-edit-pro.git"
+    "url": "git+https://github.com/lkraider/pi-linehash-edit.git"
   },
-  "author": "pi-hashline-edit-pro contributors",
+  "author": "pi-linehash-edit contributors",
   "keywords": [
     "pi-package",
     "pi",
     "coding-agent",
     "extension",
-    "hashline",
+    "linehash",
+    "line-hash",
     "hash-anchored",
     "strict"
   ],

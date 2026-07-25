@@ -6,7 +6,7 @@ import { configDir, configPath } from "../../src/paths";
 describe("configDir", () => {
   it("returns the config directory under home", () => {
     const dir = configDir();
-    expect(dir).toBe(join(homedir(), ".config", "pi-hashline-edit-pro"));
+    expect(dir).toBe(join(homedir(), ".config", "pi-linehash-edit"));
   });
 });
 

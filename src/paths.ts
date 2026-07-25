@@ -8,7 +8,7 @@ function homeBase(): string {
 }
 
 export function configDir(): string {
-  return join(homeBase(), ".config", "pi-hashline-edit-pro");
+  return join(homeBase(), ".config", "pi-linehash-edit");
 }
 
 export function configPath(): string {

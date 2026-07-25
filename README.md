@@ -1,4 +1,4 @@
-# pi-hashline-edit-pro
+# pi-linehash-edit
 
 A [pi-coding-agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) extension that replaces the built-in `read` and `edit` tools with an anchored line-replacing workflow. Strict semantics, no silent relocation, no autocorrection, no fuzzy fallback. Every line is addressed by its own line number, verified by a content checksum, so edits stay precise and stale anchors are caught before they reach the file.
 
@@ -17,13 +17,13 @@ Line number is already a perfect, free identifier: no two lines in one snapshot 
 From npm:
 
 ```bash
-pi install npm:pi-hashline-edit-pro
+pi install npm:pi-linehash-edit
 ```
 
 From a local checkout:
 
 ```bash
-pi install /path/to/pi-hashline-edit-pro
+pi install /path/to/pi-linehash-edit
 ```
 
 ## How It Works
@@ -106,7 +106,7 @@ Auto-read is **disabled by default**. When enabled, after a successful `write` o
 1. `write` a file, result includes hashline anchors
 2. `replace` using those anchors directly
 
-Toggle at runtime with the `/toggle-auto-read` command. The setting persists across sessions in the config file (`~/.config/pi-hashline-edit-pro/config.json`). Set `PI_HASHLINE_AUTO_READ=1` to enable by default on first run.
+Toggle at runtime with the `/toggle-auto-read` command. The setting persists across sessions in the config file (`~/.config/pi-linehash-edit/config.json`). Set `PI_HASHLINE_AUTO_READ=1` to enable by default on first run.
 
 For large files (>2000 lines), the auto-read output is truncated with a pagination hint. Use `read` with `offset` to see more.
 
@@ -123,7 +123,7 @@ The post-edit diff (with `+`/`-` markers) is exposed to the host UI via `details
 
 ### Config file
 
-Settings are stored in `~/.config/pi-hashline-edit-pro/config.json`:
+Settings are stored in `~/.config/pi-linehash-edit/config.json`:
 
 ```json
 {
