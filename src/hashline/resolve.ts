@@ -91,6 +91,19 @@ function isStringPair(value: unknown): value is [string, string] {
 	);
 }
 
+function coerceContentLinesString(val: string): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(val);
+  } catch {
+    throw new Error(CONTENT_LINES_NOT_STRING_MSG);
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error(CONTENT_LINES_NOT_STRING_MSG);
+  }
+  return parsed;
+}
+
 function assertItem(edit: Record<string, unknown>, index: number): void {
   rejectUnknownFields(edit, ITEM_KS, `Edit ${index}`, "Each edit takes only { content_lines, hash_range_inclusive }.");
 
@@ -102,22 +115,12 @@ function assertItem(edit: Record<string, unknown>, index: number): void {
   if (!("content_lines" in edit)) {
     throw new Error(`[E_BAD_SHAPE] Edit ${index} requires a "content_lines" field. Provide the replacement lines (use [] to delete).`);
   }
-  if ("content_lines" in edit && !isStringArray(edit.content_lines)) {
+  if (!isStringArray(edit.content_lines)) {
     const val = edit.content_lines;
-    if (typeof val === "string") {
-      try {
-        const parsed = JSON.parse(val);
-        if (Array.isArray(parsed)) {
-          edit.content_lines = parsed;
-        } else {
-          throw new Error(CONTENT_LINES_NOT_STRING_MSG);
-        }
-      } catch {
-        throw new Error(CONTENT_LINES_NOT_STRING_MSG);
-      }
-    } else {
+    if (typeof val !== "string") {
       throw new Error(`[E_BAD_SHAPE] Edit ${index} field "content_lines" must be a string array.`);
     }
+    edit.content_lines = coerceContentLinesString(val);
   }
   if (!isStringPair(edit.hash_range_inclusive)) {
     throw new Error(
