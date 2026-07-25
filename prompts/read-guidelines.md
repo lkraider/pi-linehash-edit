@@ -1,2 +1,2 @@
-- Use `read` before `replace` when you do not have current LINE:HASH anchors for the file.
-- The HASH half may contain `-` as a normal alphabet character.
+- Use `read` before `replace` unless you already have current anchors for the file.
+- HASH may contain `-` as a normal alphabet character, not a marker.

@@ -1,8 +1,6 @@
 {{MODE_PREFIX}}
 - After a successful replace, the response shows the change summary. {{AUTO_READ_GUIDANCE}}
-- On [E_STALE_ANCHOR], call read to get fresh anchors, copy the full "line:hash" anchor of the start and end of the range into hash_range_inclusive, and retry.
-- hash_range_inclusive replaces the ENTIRE range inclusively. Every line from the first anchor through the second anchor is deleted. Only put replacement lines in content_lines — do not include lines that already exist outside the range.
-- Preserve leading whitespace exactly. The content after │ in read output includes all leading spaces and tabs — copy them into content_lines unchanged.
-- content_lines must be a native JSON array of strings, not a JSON string.
-- **Boundary check:** scan your content_lines before submitting. If the first non-empty line matches the line before the start anchor, remove it. If the last non-empty line matches the line after the end anchor, remove it. Those lines survive outside your range already. A [W_DUP] warning means you missed this — the duplicate was kept in the file, not silently fixed.
+- On [E_STALE_ANCHOR], re-read and copy the current `line:hash` anchors into hash_range_inclusive before retrying.
+- content_lines must be a native JSON array of strings (not a JSON string), preserving leading whitespace exactly as shown after │ in read output.
+- **Boundary check:** before submitting, verify content_lines doesn't repeat a line that already survives outside your range — first non-empty line matching the line before the start anchor, or last non-empty line matching the line after the end anchor. A [W_DUP] warning means you missed one; the duplicate is kept exactly as submitted, never silently removed.
 - **Moving blocks:** to move a block atomically, use two changes in one `changes` array: (1) delete the source, `{ content_lines: [], hash_range_inclusive: [srcStart, srcEnd] }`, (2) insert at the target by replacing the target line with itself plus the moved content, `{ content_lines: [targetLine, ...movedLines], hash_range_inclusive: [targetAnchor, targetAnchor] }`. Both validate against one snapshot — no shifting anchors.

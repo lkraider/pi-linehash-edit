@@ -271,7 +271,7 @@ const MODE_CFG = {
     guidePrefix: "- Use `replace` with line:hash anchors for all file changes. Only one edit per call.",
   },
   bulk: {
-    desc: "\n\nPut all operations on one file in a single `replace` call. Stack every region into the `changes` array, even when they are far apart. Anchors within one call must all come from the same pre-edit read; the runtime applies them atomically against that one snapshot.",
+    desc: "\n\nBatch every edit to one file into a single `replace` call via the `changes` array, even when regions are far apart. All anchors in one call must come from the same read — the edits apply atomically against that one snapshot.",
     examples: [
       "", "Single line:", "{ \"changes\": [{ \"content_lines\": [\"const x = 1;\"], \"hash_range_inclusive\": [\"12:MQ\", \"12:MQ\"] }], \"path\": \"src/main.ts\" }", "", "Range replace:", "{ \"changes\": [{ \"content_lines\": [\"function greet() {\", \"  return 1;\", \"}\"], \"hash_range_inclusive\": [\"5:ZP\", \"7:VR\"] }], \"path\": \"src/main.ts\" }",
     ].join("\n"),

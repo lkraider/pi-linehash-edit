@@ -1,11 +1,11 @@
 Read a text file. Each line is returned as `LINE:HASH│content`.
 
-Key rule: the anchor is the whole `LINE:HASH` pair, copied verbatim. Use it to reference lines in replace calls. HASH changes when the line content changes; LINE changes when lines are added or removed above it — always use the pair from your most recent read.
+The anchor is the whole `LINE:HASH` pair — copy it verbatim into replace calls. There is no fuzzy matching: if a line's position or content differs at all from what you read, `replace` fails with [E_STALE_ANCHOR]. Re-read to get current anchors.
 
 Anchor format:
-- `LINE` is the 1-based line number.
-- `HASH` is 2 characters from the URL-safe base64 alphabet `A-Za-z0-9-_` (e.g. `aB`, `4y`, `-q`) — a checksum on that line's content, not a unique ID by itself.
-- The content after the `│` separator is the line verbatim.
+- `LINE` — 1-based line number.
+- `HASH` — 2 characters from the URL-safe base64 alphabet `A-Za-z0-9-_` (e.g. `aB`, `4y`, `-q`). A checksum on the line's content, not a unique ID — identical lines share a HASH; LINE disambiguates them.
+- Content after `│` is the line verbatim.
 
 Pagination:
 - Large files return a truncated preview with a pagination hint (e.g. `[Showing lines 1-100 of 500. Use offset=101 to continue.]`). Call `read` again with `offset=N` to continue.

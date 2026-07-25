@@ -1,3 +1,2 @@
-- Call `undo_last_replace` with the file path to revert the last replace on that file.
-- After undoing, call `read` to get fresh anchors for a corrected replace.
-- Only the most recent replace per file is tracked — calling undo twice without an intervening replace will produce "no undo history".
+- After undoing, call `read` to get fresh anchors before retrying the replace.
+- Only the most recent replace per file is tracked — undoing twice without an intervening replace returns "no undo history".
