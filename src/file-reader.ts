@@ -6,7 +6,7 @@ import { resolveTarget } from "./fs-write";
 import { toCwd } from "./paths";
 import { detectEnding, toLF, stripBOM } from "./replace-diff";
 import { abortIf } from "./utils";
-import { valKind, valAccess } from "./validation";
+import { validateKind, validateAccess } from "./validation";
 import { visLines } from "./utils";
 export interface NormFile {
   absolutePath: string;
@@ -49,11 +49,11 @@ export async function readNormFile(
   const resolvedPath = await resolveTarget(absolutePath);
 
   abortIf(signal);
-  await valAccess(resolvedPath, path, accessMode);
+  await validateAccess(resolvedPath, path, accessMode);
 
   abortIf(signal);
   const file = preloadedFile ?? (await loadFileKindAndText(resolvedPath));
-  valKind(file, path);
+  validateKind(file, path);
 
   abortIf(signal);
   const { bom, text: rawContent } = stripBOM(file.text);

@@ -16,7 +16,7 @@ import { abortIf } from "./utils";
 import { fileSnap } from "./file-reader";
 import { visLines } from "./utils";
 import { loadP, loadGuide } from "./prompts";
-import { valAccess } from "./validation";
+import { validateAccess } from "./validation";
 
 const R_DESC = loadP("../prompts/read.md", {
 	DEFAULT_MAX_LINES: String(DEFAULT_MAX_LINES),
@@ -148,7 +148,7 @@ export function regRead(pi: ExtensionAPI): void {
 			const absolutePath = toCwd(rawPath, ctx.cwd);
 
 			abortIf(signal);
-			await valAccess(absolutePath, rawPath);
+			await validateAccess(absolutePath, rawPath);
 
 			abortIf(signal);
 			const file = await loadFileKindAndText(absolutePath);
