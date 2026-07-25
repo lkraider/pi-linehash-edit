@@ -158,12 +158,13 @@ function warnUnicodeEscape(
 
 export function assertNoBarePrefix(
   edits: ParsedEdit[],
-  fileLines: string[],
   fileHashes: string[],
+  warnings: string[],
 ): void {
   const suspects: { line: string; editIndex: number; lineIndex: number }[] = [];
   for (let editIndex = 0; editIndex < edits.length; editIndex++) {
     const edit = edits[editIndex]!;
+    const [start, end] = edit.hash_range_inclusive;
     for (let lineIndex = 0; lineIndex < edit.content_lines.length; lineIndex++) {
       const line = edit.content_lines[lineIndex]!;
       const match = HL_BARE_PREFIX_RE.exec(line);
@@ -172,7 +173,13 @@ export function assertNoBarePrefix(
       if (!anchor) continue;
       const anchorLine = Number(anchor[1]);
       if (fileHashes[anchorLine - 1] !== anchor[2]) continue;
-      suspects.push({ line, editIndex, lineIndex });
+      if (anchorLine >= start.line && anchorLine <= end.line) {
+        suspects.push({ line, editIndex, lineIndex });
+      } else {
+        warnings.push(
+          `[W_BARE_HASH_PREFIX] Edit ${editIndex} content_lines[${lineIndex}] starts with ${JSON.stringify(match[1])}│, which matches a real anchor elsewhere in this file. If this was copied from read output, remove the "line:hash│" prefix; if it is literal content, ignore this warning.`,
+        );
+      }
     }
   }
   if (suspects.length === 0) return;
@@ -182,7 +189,7 @@ export function assertNoBarePrefix(
   const exampleLine = suspects[0]!.line;
 
   throw new Error(
-    `[E_BARE_HASH_PREFIX] ${suspects.length} edit line(s) start with a real file-line anchor (${locations}). Example: ${JSON.stringify(exampleLine)}. This is strong evidence the "line:hash│" prefix was copied from read output. Remove the "line:hash│" prefix from each affected content_lines entry; keep only the literal line content that appears after "│". Remember: content_lines uses file content only, hash_range_inclusive uses anchors.`
+    `[E_BARE_HASH_PREFIX] ${suspects.length} edit line(s) start with a real file-line anchor inside the replaced range (${locations}). Example: ${JSON.stringify(exampleLine)}. This is strong evidence the "line:hash│" prefix was copied from read or diff output. Remove the "line:hash│" prefix from each affected content_lines entry; keep only the literal line content that appears after "│". Remember: content_lines uses file content only, hash_range_inclusive uses anchors.`
   );
 }
 

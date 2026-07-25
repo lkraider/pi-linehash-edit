@@ -36,11 +36,11 @@ describe("strict edit input (no autocorrection)", () => {
     );
 	});
 
-	it("rejects diff deletion rows in array form", () => {
+	it("accepts column-aligned negative numbers literally (no shape-only rejection)", () => {
 		const toolEdits: RawEdit[] = [
       { hash_range_inclusive: ["1:ZZ", "1:ZZ"], content_lines: ["-1    foo"] },
     ];
-    expect(() => parseEdits(toolEdits)).toThrow(/^\[E_INVALID_PATCH\]/);
+    expect(parseEdits(toolEdits)[0]!.content_lines).toEqual(["-1    foo"]);
 	});
 
 	it("accepts plain literal content unchanged", () => {
@@ -68,9 +68,9 @@ describe("bare-prefix false positives are impossible: only real anchors trigger 
 		return applyEdits(file, parseEdits(toolEdits), undefined, precomputedHashes);
 	}
 
-	it("rejects when a content line's prefix is the real, current anchor of that exact line", () => {
+	it("rejects when a content line quotes a real anchor inside the replaced range", () => {
 		const hashes = lineHashes(file);
-		const anchor = anchorAt(hashes, 1);
+		const anchor = anchorAt(hashes, 2);
 		const betaAnchor = anchorAt(hashes, 2);
 		let caught: Error | undefined;
 		try {
@@ -83,6 +83,17 @@ describe("bare-prefix false positives are impossible: only real anchors trigger 
 		expect(caught).toBeDefined();
 		expect(caught!.message).toMatch(/^\[E_BARE_HASH_PREFIX\]/);
 		expect(caught!.message).toContain(`${betaAnchor}│### heading`);
+	});
+
+	it("warns but applies when a content line quotes a real anchor outside the replaced range", () => {
+		const hashes = lineHashes(file);
+		const anchor = anchorAt(hashes, 1);
+		const betaAnchor = anchorAt(hashes, 2);
+		const result = applyTool([
+      { hash_range_inclusive: [anchor, anchor], content_lines: [`${betaAnchor}│quoted`] },
+    ], hashes);
+		expect(result.content).toContain(`${betaAnchor}│quoted`);
+		expect(result.warnings?.some((w) => w.startsWith("[W_BARE_HASH_PREFIX]"))).toBe(true);
 	});
 
 	it("does NOT reject a line:hash-shaped prefix that doesn't match any real current anchor", () => {
@@ -107,14 +118,13 @@ describe("bare-prefix false positives are impossible: only real anchors trigger 
 
 	it("reports the edit index and content_lines index for each offending line", () => {
 		const hashes = lineHashes(file);
-		const anchor = anchorAt(hashes, 1);
 		const gammaAnchor = anchorAt(hashes, 3);
 		const deltaAnchor = anchorAt(hashes, 4);
 		let caught: Error | undefined;
 		try {
       applyTool([
-        { hash_range_inclusive: [anchor, anchor], content_lines: [`${gammaAnchor}│one`] },
-        { hash_range_inclusive: [anchor, anchor], content_lines: ["real", `${deltaAnchor}│two`] },
+        { hash_range_inclusive: [gammaAnchor, gammaAnchor], content_lines: [`${gammaAnchor}│one`] },
+        { hash_range_inclusive: [deltaAnchor, deltaAnchor], content_lines: ["real", `${deltaAnchor}│two`] },
       ], hashes);
     } catch (e) {
       caught = e as Error;

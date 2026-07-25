@@ -45,7 +45,6 @@ type ReplaceSpan = {
 };
 
 function assertNotEmpty(originalContent: string, result: string): void {
-	// Whitespace-only files may be emptied; the guard protects real content.
 	if (originalContent.trim().length > 0 && result.length === 0) {
 		throw new Error(
 			"[E_WOULD_EMPTY] Cannot empty a non-empty file via edit. Use `write` if you need to clear the file."
@@ -248,7 +247,7 @@ export function applyEdits(
 		);
 	}
 
-	assertNoBarePrefix(edits, lineIndex.fileLines, fileHashes);
+	assertNoBarePrefix(edits, fileHashes, warnings);
 	warnUnicodeEscape(edits, warnings);
 
 	for (const bw of boundaryWarnings) {
@@ -320,7 +319,6 @@ export function changedRange(
 	const firstChangedLine = prefix + 1;
 	const lastChangedLine = resLines.length - suffix;
 	if (lastChangedLine < firstChangedLine) {
-		// Pure deletion: no result line is new; report the deletion point.
 		const point = Math.max(1, Math.min(firstChangedLine, visLines(result).length));
 		return { firstChangedLine: point, lastChangedLine: point };
 	}

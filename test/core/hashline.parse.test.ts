@@ -104,22 +104,8 @@ describe("parseText", () => {
   it("returns empty string as a single empty line for blank content (array input)", () => {
     expect(parseText([""])).toEqual([""]);
   });
-	it("rejects array input that contains LINE:HASH| prefixes", () => {
-		expect(() => parseText(["+1:aB│foo", "+2:xY│bar"])).toThrow(
-			/^\[E_INVALID_PATCH\]/,
-		);
-	});
-
-	it("rejects diff-preview hunks with + and context anchor prefixes", () => {
-		expect(() =>
-				parseText([" 1:aB│keep", "+2:xY│new", " 3:mN│after"]),
-		).toThrow(/^\[E_INVALID_PATCH\]/);
-	});
-
-	it("rejects diff-preview deletion rows", () => {
-		expect(() =>
-				parseText([" 1:aB│keep", "-10    old", " 2:xY│after"]),
-		).toThrow(/^\[E_INVALID_PATCH\]/);
+	it("passes anchor-shaped prefixes through; copied-row detection is evidence-based downstream", () => {
+		expect(parseText(["+1:aB│foo", "-10    old"])).toEqual(["+1:aB│foo", "-10    old"]);
 	});
 
   it("rejects string-form rendered diff hunks (string input rejected before prefix check)", () => {

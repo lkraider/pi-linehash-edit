@@ -4,8 +4,6 @@ export {
 	HASH_CLASS,
 	ANCHOR_CLASS,
 	ANCHOR_RE,
-	HL_PREFIX_PLUS_RE,
-	DIFF_MINUS_RE,
 	HL_BARE_PREFIX_RE,
 	lineHash,
 	lineHashes,

@@ -12,9 +12,7 @@ export const HASH_CLASS = `[${ALPH_SAFE}]{${HASH_LEN}}`;
 export const ANCHOR_CLASS = `\\d+:${HASH_CLASS}`;
 export const ANCHOR_RE = new RegExp(`^(\\d+):(${HASH_CLASS})$`);
 
-export const HL_PREFIX_PLUS_RE = new RegExp(`^\\+\\s*${ANCHOR_CLASS}│`);
-export const DIFF_MINUS_RE = /^-\s*\d+\s{4}/;
-export const HL_BARE_PREFIX_RE = new RegExp(`^\\s*(${ANCHOR_CLASS})│`);
+export const HL_BARE_PREFIX_RE = new RegExp(`^\\s*\\+?\\s*(${ANCHOR_CLASS})│`);
 
 function hashToString(h: number): string {
 	const totalBits = HASH_LEN * ALPH_BITS;

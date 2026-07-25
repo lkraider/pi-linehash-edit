@@ -85,9 +85,14 @@ describe("applyEdits — recovery scenarios", () => {
     ).toThrow(/E_BARE_HASH_PREFIX/);
   });
 
-  it("rejects diff preview rows in content_lines", () => {
-    const edits = [{ hash_range_inclusive: ["1:ZZ", "1:ZZ"] as [string, string], content_lines: ["+1:ZZ│new"] }];
-    expect(() => parseEdits(edits)).toThrow(/E_INVALID_PATCH/);
+  it("rejects copied diff '+' rows whose anchor is real and inside the range", async () => {
+    const content = "a\nb\nc";
+    const hashes = await lineHashes(content);
+    expect(() =>
+      applyEdits(content, parseEdits([
+        { hash_range_inclusive: [anchorAt(hashes, 1), anchorAt(hashes, 1)] as [string, string], content_lines: [`+${anchorAt(hashes, 1)}│new`] },
+      ]))
+    ).toThrow(/E_BARE_HASH_PREFIX/);
   });
 
   it("warns on unicode escape sequences in content", async () => {

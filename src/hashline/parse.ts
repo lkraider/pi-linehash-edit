@@ -1,8 +1,4 @@
-import {
-	ANCHOR_RE,
-	HL_PREFIX_PLUS_RE,
-	DIFF_MINUS_RE,
-} from "./hash";
+import { ANCHOR_RE } from "./hash";
 import { CONTENT_LINES_NOT_STRING_MSG } from "../constants";
 
 export type Anchor = { line: number; hash: string };
@@ -30,25 +26,10 @@ function parseRef(ref: string): Anchor {
 
 export const parseHashRef = parseRef;
 
-function assertNoPrefixes(lines: string[]): void {
-	for (const line of lines) {
-		if (!line.length) continue;
-		if (
-			HL_PREFIX_PLUS_RE.test(line) ||
-			DIFF_MINUS_RE.test(line)
-		) {
-			throw new Error(
-			`[E_INVALID_PATCH] "content_lines" must contain literal file content. Offending line looks like the diff preview's +N:HASH│ row: ${JSON.stringify(line)}. Use literal file content only — plain + or - lines are written literally.`
-			);
-		}
-	}
-}
-
 export function parseText(edit: string[] | string | null): string[] {
   if (edit === null) return [];
   if (typeof edit === "string") {
     throw new Error(CONTENT_LINES_NOT_STRING_MSG);
   }
-  assertNoPrefixes(edit);
   return edit;
 }
