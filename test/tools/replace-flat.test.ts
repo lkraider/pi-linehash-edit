@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { readFile } from "fs/promises";
 import { lineHashes } from "../../src/hashline";
 import { flatEditToolSchema, regReplaceFlat } from "../../src/replace";
-import { editToolSchema } from "../../src/replace";
 import { makeFakePiRegistry, withTempFile, anchorAt } from "../support/fixtures";
 
 describe("flatEditToolSchema", () => {
@@ -25,7 +24,7 @@ describe("regReplaceFlat", () => {
     const tool = getTool("replace");
     expect(tool).toBeDefined();
     expect(tool.name).toBe("replace");
-    expect(tool.parameters).toBe(editToolSchema);
+    expect(tool.parameters).toBe(flatEditToolSchema);
   });
 
   it("prepareArguments normalizes file_path to path", () => {
@@ -39,6 +38,34 @@ describe("regReplaceFlat", () => {
     });
     expect(result.path).toBe("test.txt");
     expect(result.file_path).toBeUndefined();
+  });
+
+  it("prepareArguments unwraps a single-item bulk changes array to top-level fields", () => {
+    const { pi, getTool } = makeFakePiRegistry();
+    regReplaceFlat(pi);
+    const tool = getTool("replace");
+    const result = tool.prepareArguments({
+      path: "test.txt",
+      changes: [{ hash_range_inclusive: ["1:aB", "1:aB"], content_lines: ["new"] }],
+    });
+    expect(result.changes).toBeUndefined();
+    expect(result.hash_range_inclusive).toEqual(["1:aB", "1:aB"]);
+    expect(result.content_lines).toEqual(["new"]);
+  });
+
+  it("prepareArguments rejects a bulk changes array with more than one edit", () => {
+    const { pi, getTool } = makeFakePiRegistry();
+    regReplaceFlat(pi);
+    const tool = getTool("replace");
+    expect(() =>
+      tool.prepareArguments({
+        path: "test.txt",
+        changes: [
+          { hash_range_inclusive: ["1:aB", "1:aB"], content_lines: ["one"] },
+          { hash_range_inclusive: ["2:cD", "2:cD"], content_lines: ["two"] },
+        ],
+      }),
+    ).toThrow(/\[E_BAD_SHAPE\] Flat mode allows exactly one edit per call/);
   });
 
 

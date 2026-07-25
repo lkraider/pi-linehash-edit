@@ -11,7 +11,7 @@ import {
   restoreEndings,
 } from "./replace-diff";
 import { readNormFile } from "./file-reader";
-import { normReq, normalizeFilePath } from "./replace-normalize";
+import { normReq, normalizeFilePath, unwrapSingleChange, tryParseContentLines } from "./replace-normalize";
 import { isRec, has, rejectUnknownFields, abortIf } from "./utils";
 import { MAX_HASH_LINES } from "./constants";
 import { resolveTarget, writeAtomic } from "./fs-write";
@@ -268,6 +268,7 @@ const MODE_CFG = {
     ].join("\n"),
     prefix: "one edit per call (flat mode)",
     guidePrefix: "- Use `replace` with line:hash anchors for all file changes. Only one edit per call.",
+    parameters: flatEditToolSchema,
   },
   bulk: {
     desc: "\n\nBatch every edit to one file into a single `replace` call via the `changes` array, even when regions are far apart. All anchors in one call must come from the same read — the edits apply atomically against that one snapshot.",
@@ -280,6 +281,7 @@ const MODE_CFG = {
     ].join("\n"),
     prefix: "batching all changes to a file in one call",
     guidePrefix: "- Use `replace` with line:hash anchors for all file changes; batch every change to one file into a single `replace` call.",
+    parameters: editToolSchema,
   },
 } as const;
 
@@ -306,7 +308,7 @@ export function buildToolDef(opts: { flat: boolean; autoRead?: boolean }): ToolD
     AUTO_READ_GUIDANCE: readGuidance,
   });
 
-  const parameters = editToolSchema;
+  const parameters = cfg.parameters;
 
   return {
     name: "replace",
@@ -320,7 +322,11 @@ export function buildToolDef(opts: { flat: boolean; autoRead?: boolean }): ToolD
           if (!isRec(args)) return args as any;
           const record = { ...args };
           normalizeFilePath(record);
-          return normReq(record) as any;
+          unwrapSingleChange(record);
+          if (has(record, "content_lines") && typeof record.content_lines === "string") {
+            tryParseContentLines(record, "content_lines");
+          }
+          return record as any;
         }
       : (args: unknown) =>
           normReq(args) as ReqParams,

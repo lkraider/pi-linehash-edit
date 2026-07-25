@@ -1,7 +1,7 @@
 import { isRec, has } from "./utils";
 import { CONTENT_LINES_NOT_STRING_MSG } from "./constants";
 
-function tryParseContentLines(record: Record<string, unknown>, key: string): void {
+export function tryParseContentLines(record: Record<string, unknown>, key: string): void {
   const val = record[key];
   if (typeof val !== "string") return;
   try {
@@ -20,6 +20,20 @@ export function normalizeFilePath(record: Record<string, unknown>): void {
   if (typeof record.path !== "string" && typeof record.file_path === "string") {
     record.path = record.file_path;
     delete record.file_path;
+  }
+}
+
+export function unwrapSingleChange(record: Record<string, unknown>): void {
+  if (!Array.isArray(record.changes)) return;
+  if (record.changes.length !== 1) {
+    throw new Error(
+      `[E_BAD_SHAPE] Flat mode allows exactly one edit per call; got ${record.changes.length} in "changes". Use hash_range_inclusive and content_lines at the top level instead.`,
+    );
+  }
+  const only = record.changes[0];
+  delete record.changes;
+  if (isRec(only)) {
+    Object.assign(record, only);
   }
 }
 
