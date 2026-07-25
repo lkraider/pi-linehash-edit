@@ -23,10 +23,14 @@ describe("changedRange", () => {
     expect(result).toEqual({ firstChangedLine: 2, lastChangedLine: 2 });
   });
 
-  it("tracks deleting head of file", () => {
+  it("tracks deleting head of file (deletion point, consistent with middle delete)", () => {
     const result = changedRange("a\nb\nc\nd", "c\nd");
     expect(result!.firstChangedLine).toBeLessThanOrEqual(result!.lastChangedLine);
-    expect(result).toEqual({ firstChangedLine: 1, lastChangedLine: 2 });
+    expect(result).toEqual({ firstChangedLine: 1, lastChangedLine: 1 });
+  });
+
+  it("tracks a multi-line prepend across its full range", () => {
+    expect(changedRange("z\n", "a\nb\nz\n")).toEqual({ firstChangedLine: 1, lastChangedLine: 2 });
   });
 
   it("tracks deleting tail of file", () => {

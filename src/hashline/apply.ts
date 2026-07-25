@@ -45,7 +45,8 @@ type ReplaceSpan = {
 };
 
 function assertNotEmpty(originalContent: string, result: string): void {
-	if (originalContent.length > 0 && result.length === 0) {
+	// Whitespace-only files may be emptied; the guard protects real content.
+	if (originalContent.trim().length > 0 && result.length === 0) {
 		throw new Error(
 			"[E_WOULD_EMPTY] Cannot empty a non-empty file via edit. Use `write` if you need to clear the file."
 		);
@@ -294,78 +295,34 @@ export function formatRegion(
 		.join("\n");
 }
 
-function idxToLine(charIdx: number, text: string): number {
-	let line = 1;
-	for (let i = 0; i < charIdx && i < text.length; i++) {
-		if (text[i] === "\n") line++;
-	}
-	return line;
-}
-
-function findChangedBounds(original: string, result: string): { firstDiff: number; lastRes: number } {
-	let firstDiff = 0;
-	const minLen = Math.min(original.length, result.length);
-	while (firstDiff < minLen && original[firstDiff] === result[firstDiff]) {
-		firstDiff++;
-	}
-
-	let lastOrig = original.length - 1;
-	let lastRes = result.length - 1;
-	while (
-		lastOrig >= firstDiff &&
-		lastRes >= firstDiff &&
-		original[lastOrig] === result[lastRes]
-	) {
-		lastOrig--;
-		lastRes--;
-	}
-
-	return { firstDiff, lastRes };
-}
-
-function resolveLastChangedLine(
-	firstChangedLine: number,
-	firstDiff: number,
-	lastRes: number,
-	original: string,
-	result: string,
-): number {
-	if (lastRes < firstDiff) {
-		return result.length === 0 ? 1 : visLines(result).length;
-	}
-	if (firstDiff === 0 && original.length > 0 && result.endsWith(original)) {
-		return firstChangedLine;
-	}
-	return idxToLine(lastRes + 1, result);
-}
-
 export function changedRange(
 	original: string,
 	result: string,
 ): { firstChangedLine: number; lastChangedLine: number } | null {
 	if (original === result) return null;
 
-	if (original.length === 0) {
-		return {
-			firstChangedLine: 1,
-			lastChangedLine: visLines(result).length,
-		};
+	const origLines = original.split("\n");
+	const resLines = result.split("\n");
+
+	let prefix = 0;
+	const maxShared = Math.min(origLines.length, resLines.length);
+	while (prefix < maxShared && origLines[prefix] === resLines[prefix]) {
+		prefix++;
+	}
+	let suffix = 0;
+	while (
+		suffix < maxShared - prefix &&
+		origLines[origLines.length - 1 - suffix] === resLines[resLines.length - 1 - suffix]
+	) {
+		suffix++;
 	}
 
-	if (result.startsWith(original) && original.endsWith("\n")) {
-		return {
-			firstChangedLine: visLines(original).length + 1,
-			lastChangedLine: visLines(result).length,
-		};
+	const firstChangedLine = prefix + 1;
+	const lastChangedLine = resLines.length - suffix;
+	if (lastChangedLine < firstChangedLine) {
+		// Pure deletion: no result line is new; report the deletion point.
+		const point = Math.max(1, Math.min(firstChangedLine, visLines(result).length));
+		return { firstChangedLine: point, lastChangedLine: point };
 	}
-
-	const { firstDiff, lastRes } = findChangedBounds(original, result);
-	if (firstDiff === Math.min(original.length, result.length) && original.length === result.length) {
-		return null;
-	}
-
-	const firstChangedLine = idxToLine(firstDiff + 1, result);
-	const lastChangedLine = resolveLastChangedLine(firstChangedLine, firstDiff, lastRes, original, result);
-
 	return { firstChangedLine, lastChangedLine };
 }
