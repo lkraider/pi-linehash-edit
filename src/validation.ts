@@ -3,7 +3,7 @@ import { access as fsAccess } from "fs/promises";
 import type { LFile } from "./file-kind";
 import { errCode } from "./utils";
 
-export async function valAccess(
+export async function validateAccess(
 	absolutePath: string,
 	path: string,
 	accessMode: number = constants.R_OK,
@@ -23,7 +23,7 @@ export async function valAccess(
 	}
 }
 
-export function valKind(file: LFile, path: string): asserts file is { kind: "text"; text: string; hadUtf8DecodeErrors?: true } {
+export function validateKind(file: LFile, path: string): asserts file is { kind: "text"; text: string; hadUtf8DecodeErrors?: true } {
 	if (file.kind === "directory") {
 		throw new Error(`Path is a directory: ${path}. Use ls to inspect directories.`);
 	}
@@ -35,8 +35,4 @@ export function valKind(file: LFile, path: string): asserts file is { kind: "tex
 	}
 }
 
-
-export function isText(file: LFile): file is { kind: "text"; text: string; hadUtf8DecodeErrors?: true } {
-	return file.kind === "text";
-}
 
