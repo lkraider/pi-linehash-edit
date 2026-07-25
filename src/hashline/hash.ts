@@ -25,7 +25,7 @@ export const HASH_CLASS = `[${ALPH_SAFE}]{${HASH_LEN}}`;
 function h2s(h: number): string {
 	const totalBits = HASH_LEN * ALPH_BITS;
 	const shift = 32 - totalBits;
-	let n = h >>> shift;
+	const n = h >>> shift;
 	let out = "";
 	for (let j = 0; j < HASH_LEN; j++) {
 		out +=
@@ -142,12 +142,13 @@ function mapStableHashes(
     if (!candidates || candidates.length === 0) continue;
 
     let bestIdx = 0;
-    if (removedHashes && removedHashes.size > 0) {
-      for (let j = 0; j < candidates.length; j++) {
-        if (!removedHashes.has(candidates[j]!.hash)) {
-          bestIdx = j;
-          break;
-        }
+    let bestDist = Infinity;
+    for (let j = 0; j < candidates.length; j++) {
+      if (removedHashes?.has(candidates[j]!.hash)) continue;
+      const dist = Math.abs(candidates[j]!.index - i);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = j;
       }
     }
 

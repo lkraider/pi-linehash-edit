@@ -9,7 +9,6 @@ import {
 	type RHEdit,
 	type NEdit,
 	type HEdit,
-	type BDupWarn,
 	type AutoFix,
 } from "./resolve";
 
