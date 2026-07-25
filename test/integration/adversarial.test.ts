@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { readFile } from "fs/promises";
 import { withTempFile, setupIntegrationTest, getText, extractHash } from "../support/fixtures";
 
-describe("adversarial: boundary auto-fix double-strips a sandwiched insert", () => {
-  it("deletes the whole line instead of replacing it, when both neighbors coincidentally match", async () => {
+describe("invariant: replace must apply exactly the requested content_lines", () => {
+  it("does not delete a sandwiched line when both neighbors coincidentally match its replacement", async () => {
     const file = "- item\nOLD\n- item\n";
     await withTempFile("sandwich.txt", file, async ({ cwd, path }) => {
       const { ctx, readTool, editTool } = setupIntegrationTest(cwd);
@@ -18,13 +18,11 @@ describe("adversarial: boundary auto-fix double-strips a sandwiched insert", () 
       );
 
       const content = await readFile(path, "utf-8");
-      expect(content).toBe("- item\n- item\n");
+      expect(content).toBe("- item\n- item\n- item\n- item\n");
     });
   });
-});
 
-describe("adversarial: boundary auto-fix eats an intentional adjacent duplicate", () => {
-  it("silently no-ops an insert-a-copy edit instead of applying it", async () => {
+  it("applies an insert-a-copy edit instead of silently discarding it as a duplicate", async () => {
     const file = "- item\n- item\n";
     await withTempFile("adjacent.txt", file, async ({ cwd, path }) => {
       const { ctx, readTool, editTool } = setupIntegrationTest(cwd);
@@ -38,13 +36,13 @@ describe("adversarial: boundary auto-fix eats an intentional adjacent duplicate"
       );
 
       const content = await readFile(path, "utf-8");
-      expect(content).toBe("- item\n- item\n");
+      expect(content).toBe("- item\n- item\n- item\n");
     });
   });
 });
 
-describe("adversarial: duplicate-content lines swap identity across an unrelated edit", () => {
-  it("gives an untouched duplicate line a new hash after an unrelated nearby insert", async () => {
+describe("invariant: an untouched line's hash must never change because of an edit elsewhere", () => {
+  it("keeps a duplicate-content line's hash stable across an unrelated insert", async () => {
     const file = "A\nX\nB1\nB2\nX\nC\n";
     await withTempFile("swap.txt", file, async ({ cwd }) => {
       const { ctx, readTool, editTool } = setupIntegrationTest(cwd);
@@ -69,11 +67,11 @@ describe("adversarial: duplicate-content lines swap identity across an unrelated
       const read2 = await readTool.execute("r2", { path: "swap.txt" }, undefined, undefined, ctx);
       const lines2 = getText(read2).split("\n");
       const untouchedLineNow = lines2.find((l) => l.endsWith("│X") && l !== lines2[2]);
-      expect(extractHash(untouchedLineNow!)).not.toBe(untouchedXHash);
+      expect(extractHash(untouchedLineNow!)).toBe(untouchedXHash);
     });
   });
 
-  it("lets a follow-up edit using the remembered hash silently land on the wrong line", async () => {
+  it("never lets a follow-up edit land on a different physical line than the one its hash names", async () => {
     const file = "A\nX\nB1\nB2\nX\nC\n";
     await withTempFile("swap2.txt", file, async ({ cwd, path }) => {
       const { ctx, readTool, editTool } = setupIntegrationTest(cwd);
@@ -102,26 +100,27 @@ describe("adversarial: duplicate-content lines swap identity across an unrelated
       );
 
       const content = await readFile(path, "utf-8");
-      expect(content).toBe("A\nB1\nEDITED\nB2\nX\nC\n");
+      expect(content).toBe("A\nB1\nX\nB2\nEDITED\nC\n");
     });
   });
 });
 
-describe("adversarial: bare-hash-prefix guard has no escape for legitimate content", () => {
-  it("rejects a line that merely starts with 3 alnum chars + │, even if it matches no real anchor", async () => {
+describe("invariant: content that matches no real anchor must never be rejected as one", () => {
+  it("accepts a line starting with 3 alnum chars + │ when it isn't actually a file hash", async () => {
     const file = "a\nb\nc\n";
-    await withTempFile("boxdraw.txt", file, async ({ cwd }) => {
+    await withTempFile("boxdraw.txt", file, async ({ cwd, path }) => {
       const { ctx, readTool, editTool } = setupIntegrationTest(cwd);
       const read1 = await readTool.execute("r1", { path: "boxdraw.txt" }, undefined, undefined, ctx);
       const bHash = extractHash(getText(read1).split("\n").find((l) => l.endsWith("│b"))!);
 
-      await expect(
-        editTool.execute(
-          "e1",
-          { path: "boxdraw.txt", changes: [{ hash_range_inclusive: [bHash, bHash], content_lines: ["abc│ legitimate table cell"] }] },
-          undefined, undefined, ctx,
-        ),
-      ).rejects.toThrow(/E_BARE_HASH_PREFIX/);
+      await editTool.execute(
+        "e1",
+        { path: "boxdraw.txt", changes: [{ hash_range_inclusive: [bHash, bHash], content_lines: ["abc│ legitimate table cell"] }] },
+        undefined, undefined, ctx,
+      );
+
+      const content = await readFile(path, "utf-8");
+      expect(content).toBe("a\nabc│ legitimate table cell\nc\n");
     });
   });
 });
