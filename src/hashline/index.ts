@@ -18,21 +18,21 @@ export {
 } from "./parse";
 
 export {
-	type RAnchor,
-	type HEdit,
-	type RHEdit,
-	type HTEdit,
-	type NEdit,
-	type BDupWarn,
-	descEdit,
-	resEdits,
-	valEdits,
+	type ResolvedAnchor,
+	type ParsedEdit,
+	type ResolvedEdit,
+	type RawEdit,
+	type NoopEdit,
+	type BoundaryDupWarning,
+	describeEdit,
+	parseEdits,
+	resolveEdits,
 	assertNoBarePrefix,
-	fmtMismatch,
+	formatMismatch,
 } from "./resolve";
 export {
-	buildIdx,
+	buildLineIndex,
 	applyEdits,
-	fmtRegion,
+	formatRegion,
 	changedRange,
 } from "./apply";

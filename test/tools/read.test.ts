@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fmtRegion } from "../../src/hashline";
+import { formatRegion } from "../../src/hashline";
 import { fmtReadPreview } from "../../src/read";
 import { useTestHome } from "../support/fixtures";
 
@@ -44,14 +44,14 @@ describe("fmtReadPreview", () => {
     await expect(fmtReadPreview("a\nb\n", { limit: 0 } as any, undefined, home.testPath)).rejects.toThrow("positive integer");
   });
 
-describe("fmtRegion", () => {
+describe("formatRegion", () => {
   it("formats lines as LINE:HASH|content rows, defaulting to line 1", () => {
-    const result = fmtRegion(["AB", "DE"], ["hello", "world"]);
+    const result = formatRegion(["AB", "DE"], ["hello", "world"]);
     expect(result).toBe("1:AB│hello\n2:DE│world");
   });
 
   it("offsets line numbers by the given startLine", () => {
-    const result = fmtRegion(["XY"], ["test"], 42);
+    const result = formatRegion(["XY"], ["test"], 42);
     expect(result).toBe("42:XY│test");
   });
 });

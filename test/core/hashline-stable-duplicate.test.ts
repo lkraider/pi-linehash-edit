@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lineHashes, applyEdits, type HEdit } from "../../src/hashline";
+import { lineHashes, applyEdits, type ParsedEdit } from "../../src/hashline";
 import { withTempFile, setupIntegrationTest, getText, extractHash } from "../support/fixtures";
 
 describe("duplicate-content lines share a hash, disambiguated by line number", () => {
@@ -17,7 +17,7 @@ describe("duplicate-content lines share a hash, disambiguated by line number", (
     const hashes = lineHashes(content);
     const braceHash = hashes[2]!;
 
-    const edits: HEdit[] = [
+    const edits: ParsedEdit[] = [
       {
         hash_range_inclusive: [{ line: 1, hash: hashes[0]! }, { line: 3, hash: braceHash }],
         content_lines: [],
@@ -38,7 +38,7 @@ describe("duplicate-content lines share a hash, disambiguated by line number", (
     expect(hashes[3]).toBe(braceHash);
     expect(hashes[5]).toBe(braceHash);
 
-    const edits: HEdit[] = [
+    const edits: ParsedEdit[] = [
       {
         hash_range_inclusive: [{ line: 3, hash: hashes[2]! }, { line: 3, hash: hashes[2]! }],
         content_lines: [],

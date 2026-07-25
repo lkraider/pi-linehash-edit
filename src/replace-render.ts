@@ -1,6 +1,6 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { normReq } from "./replace-normalize";
-import type { HTEdit } from "./hashline";
+import type { RawEdit } from "./hashline";
 import type { ReqParams, ReplaceDetails } from "./replace";
 import { isRec } from "./utils";
 
@@ -38,7 +38,7 @@ export function getPreviewInput(
 
 	const request: ReqParams = {
 		path: normalized.path,
-		changes: normalized.changes as HTEdit[],
+		changes: normalized.changes as RawEdit[],
 	};
 
 	return request;

@@ -3,19 +3,19 @@ import { HL_BARE_PREFIX_RE, ANCHOR_RE } from "./hash";
 import { parseHashRef, parseText, type Anchor } from "./parse";
 import { CONTENT_LINES_NOT_STRING_MSG } from "../constants";
 
-export type RAnchor = { line: number; hash: string };
+export type ResolvedAnchor = { line: number; hash: string };
 
-export type HEdit = { content_lines: string[]; hash_range_inclusive: [Anchor, Anchor] };
-export type RHEdit = {
+export type ParsedEdit = { content_lines: string[]; hash_range_inclusive: [Anchor, Anchor] };
+export type ResolvedEdit = {
   content_lines: string[];
-  hash_range_inclusive: [RAnchor, RAnchor];
+  hash_range_inclusive: [ResolvedAnchor, ResolvedAnchor];
 };
 
 interface HMismatch {
 	ref: Anchor;
 }
 
-export interface BDupWarn {
+export interface BoundaryDupWarning {
 	kind: "trailing" | "leading";
 	survivingLineContent: string;
 	survivingLineIndex: number;
@@ -24,18 +24,18 @@ export interface BDupWarn {
 }
 
 
-export interface NEdit {
+export interface NoopEdit {
 	editIndex: number;
 	loc: string;
 	currentContent: string;
 }
 
-export type HTEdit = {
+export type RawEdit = {
   content_lines: string[];
   hash_range_inclusive: [string, string];
 };
 
-function resolveAnchor(ref: Anchor, fileHashes: string[]): RAnchor | HMismatch {
+function resolveAnchor(ref: Anchor, fileHashes: string[]): ResolvedAnchor | HMismatch {
 	if (ref.line < 1 || ref.line > fileHashes.length) return { ref };
 	if (fileHashes[ref.line - 1] !== ref.hash) return { ref };
 	return { line: ref.line, hash: ref.hash };
@@ -54,13 +54,13 @@ function assertAligned(
 }
 
 
-export function fmtMismatch(
+export function formatMismatch(
   mismatches: HMismatch[],
   fileLines: string[],
   fileHashes: string[],
   filePath?: string,
 ): string {
-  assertAligned(fileLines, fileHashes, "fmtMismatch");
+  assertAligned(fileLines, fileHashes, "formatMismatch");
 
   const refList = mismatches.map((m) => `"${m.ref.line}:${m.ref.hash}"`).join(", ");
   const detail = mismatches
@@ -77,13 +77,13 @@ export function fmtMismatch(
 
 const ITEM_KS = new Set(["content_lines", "hash_range_inclusive"]);
 
-function isStrArr(value: unknown): value is string[] {
+function isStringArray(value: unknown): value is string[] {
 	return (
 		Array.isArray(value) && value.every((item) => typeof item === "string")
 	);
 }
 
-function isStrPair(value: unknown): value is [string, string] {
+function isStringPair(value: unknown): value is [string, string] {
 	return (
 		Array.isArray(value) &&
 		value.length === 2 &&
@@ -94,7 +94,7 @@ function isStrPair(value: unknown): value is [string, string] {
 function assertItem(edit: Record<string, unknown>, index: number): void {
   rejectUnknownFields(edit, ITEM_KS, `Edit ${index}`, "Each edit takes only { content_lines, hash_range_inclusive }.");
 
-  if ("hash_range_inclusive" in edit && !isStrPair(edit.hash_range_inclusive)) {
+  if ("hash_range_inclusive" in edit && !isStringPair(edit.hash_range_inclusive)) {
     throw new Error(
       `[E_BAD_SHAPE] Edit ${index} field "hash_range_inclusive" must be a pair of anchor strings [start, end].`,
     );
@@ -102,7 +102,7 @@ function assertItem(edit: Record<string, unknown>, index: number): void {
   if (!("content_lines" in edit)) {
     throw new Error(`[E_BAD_SHAPE] Edit ${index} requires a "content_lines" field. Provide the replacement lines (use [] to delete).`);
   }
-  if ("content_lines" in edit && !isStrArr(edit.content_lines)) {
+  if ("content_lines" in edit && !isStringArray(edit.content_lines)) {
     const val = edit.content_lines;
     if (typeof val === "string") {
       try {
@@ -119,15 +119,15 @@ function assertItem(edit: Record<string, unknown>, index: number): void {
       throw new Error(`[E_BAD_SHAPE] Edit ${index} field "content_lines" must be a string array.`);
     }
   }
-  if (!isStrPair(edit.hash_range_inclusive)) {
+  if (!isStringPair(edit.hash_range_inclusive)) {
     throw new Error(
       `[E_BAD_SHAPE] Edit ${index} requires an "hash_range_inclusive" pair of anchor strings [start, end].`,
     );
   }
 }
 
-export function resEdits(edits: HTEdit[]): HEdit[] {
-  const result: HEdit[] = [];
+export function parseEdits(edits: RawEdit[]): ParsedEdit[] {
+  const result: ParsedEdit[] = [];
   for (const [index, edit] of edits.entries()) {
     assertItem(edit as Record<string, unknown>, index);
 
@@ -140,8 +140,8 @@ export function resEdits(edits: HTEdit[]): HEdit[] {
   return result;
 }
 
-function warnUnicodeEsc(
-  edits: HEdit[],
+function warnUnicodeEscape(
+  edits: ParsedEdit[],
   warnings: string[],
 ): void {
   for (const edit of edits) {
@@ -154,7 +154,7 @@ function warnUnicodeEsc(
 }
 
 export function assertNoBarePrefix(
-  edits: HEdit[],
+  edits: ParsedEdit[],
   fileLines: string[],
   fileHashes: string[],
 ): void {
@@ -183,7 +183,7 @@ export function assertNoBarePrefix(
   );
 }
 
-export function descEdit(edit: RHEdit): string {
+export function describeEdit(edit: ResolvedEdit): string {
 	const [start, end] = edit.hash_range_inclusive;
 	return `replace ${start.line}:${start.hash}-${end.line}:${end.hash}`;
 }
@@ -195,7 +195,7 @@ function checkBoundaryDup(
 	kind: "trailing" | "leading",
 	survivingLineIndex: number,
 	editIndex: number,
-): BDupWarn | null {
+): BoundaryDupWarning | null {
 	if (
 		adjacentLine === undefined ||
 		replacementEdge === undefined ||
@@ -212,19 +212,19 @@ function checkBoundaryDup(
 }
 
 
-export function valEdits(
-	edits: HEdit[],
+export function resolveEdits(
+	edits: ParsedEdit[],
 	fileLines: string[],
 	fileHashes: string[],
 	warnings: string[],
 	signal: AbortSignal | undefined,
-): { resolved: RHEdit[]; mismatches: HMismatch[]; boundaryWarnings: BDupWarn[] } {
-	assertAligned(fileLines, fileHashes, "valEdits");
-	const resolved: RHEdit[] = [];
+): { resolved: ResolvedEdit[]; mismatches: HMismatch[]; boundaryWarnings: BoundaryDupWarning[] } {
+	assertAligned(fileLines, fileHashes, "resolveEdits");
+	const resolved: ResolvedEdit[] = [];
 	const mismatches: HMismatch[] = [];
-	const boundaryWarnings: BDupWarn[] = [];
+	const boundaryWarnings: BoundaryDupWarning[] = [];
 
-	const tryResolve = (ref: Anchor): RAnchor | undefined => {
+	const tryResolve = (ref: Anchor): ResolvedAnchor | undefined => {
 		const result = resolveAnchor(ref, fileHashes);
 		if ("ref" in result) {
 			mismatches.push(result);
@@ -263,4 +263,4 @@ export function valEdits(
 	return { resolved, mismatches, boundaryWarnings };
 }
 
-export { warnUnicodeEsc };
+export { warnUnicodeEscape };

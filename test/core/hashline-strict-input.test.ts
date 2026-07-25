@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
 	applyEdits,
 	lineHashes,
-	resEdits,
-	type HTEdit,
+	parseEdits,
+	type RawEdit,
 } from "../../src/hashline";
 import { anchorAt } from "../support/fixtures";
 
@@ -11,12 +11,12 @@ describe("strict edit input (no autocorrection)", () => {
 	it("rejects a real line:hash| prefix in content with E_BARE_HASH_PREFIX", () => {
 		const file = "foo\nbar";
 		const hashes = lineHashes(file);
-		const toolEdits: HTEdit[] = [
+		const toolEdits: RawEdit[] = [
       { hash_range_inclusive: [anchorAt(hashes, 1), anchorAt(hashes, 1)], content_lines: [`${anchorAt(hashes, 1)}│foo`] },
     ];
     let caught: Error | undefined;
 		try {
-			applyEdits(file, resEdits(toolEdits));
+			applyEdits(file, parseEdits(toolEdits));
 		} catch (e) {
 			caught = e as Error;
 		}
@@ -26,37 +26,37 @@ describe("strict edit input (no autocorrection)", () => {
 	});
 
 	it("rejects string content_lines before patch-prefix validation", () => {
-		const toolEdits: HTEdit[] = [
+		const toolEdits: RawEdit[] = [
 			{
         hash_range_inclusive: ["1:ZZ", "1:ZZ"], content_lines: `+1:ZZ:foo`,
-      } as unknown as HTEdit,
+      } as unknown as RawEdit,
     ];
-    expect(() => resEdits(toolEdits)).toThrow(
+    expect(() => parseEdits(toolEdits)).toThrow(
       /must be a native JSON array of strings, not a JSON string/i,
     );
 	});
 
 	it("rejects diff deletion rows in array form", () => {
-		const toolEdits: HTEdit[] = [
+		const toolEdits: RawEdit[] = [
       { hash_range_inclusive: ["1:ZZ", "1:ZZ"], content_lines: ["-1    foo"] },
     ];
-    expect(() => resEdits(toolEdits)).toThrow(/^\[E_INVALID_PATCH\]/);
+    expect(() => parseEdits(toolEdits)).toThrow(/^\[E_INVALID_PATCH\]/);
 	});
 
 	it("accepts plain literal content unchanged", () => {
-		const toolEdits: HTEdit[] = [
+		const toolEdits: RawEdit[] = [
       { hash_range_inclusive: ["1:ZZ", "1:ZZ"], content_lines: ["bar"] },
     ];
-    const resolved = resEdits(toolEdits);
+    const resolved = parseEdits(toolEdits);
 		expect(resolved).toHaveLength(1);
     expect(resolved[0]!.content_lines).toEqual(["bar"]);
 	});
 
 	it("preserves '#' comment lines that do not match the strict prefix", () => {
-		const toolEdits: HTEdit[] = [
+		const toolEdits: RawEdit[] = [
       { hash_range_inclusive: ["1:ZZ", "1:ZZ"], content_lines: ["# keep me"] },
     ];
-    const resolved = resEdits(toolEdits);
+    const resolved = parseEdits(toolEdits);
     expect(resolved[0]!.content_lines).toEqual(["# keep me"]);
 	});
 });
@@ -64,8 +64,8 @@ describe("strict edit input (no autocorrection)", () => {
 describe("bare-prefix false positives are impossible: only real anchors trigger it", () => {
 	const file = "alpha\nbeta\ngamma\ndelta";
 
-	function applyTool(toolEdits: HTEdit[], precomputedHashes?: string[]) {
-		return applyEdits(file, resEdits(toolEdits), undefined, precomputedHashes);
+	function applyTool(toolEdits: RawEdit[], precomputedHashes?: string[]) {
+		return applyEdits(file, parseEdits(toolEdits), undefined, precomputedHashes);
 	}
 
 	it("rejects when a content line's prefix is the real, current anchor of that exact line", () => {

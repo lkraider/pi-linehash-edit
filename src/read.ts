@@ -10,7 +10,7 @@ import {
 import { Type } from "typebox";
 import { loadFileKindAndText } from "./file-kind";
 import { readNormFile } from "./file-reader";
-import { lineHashes, fmtRegion, HASH_SEP } from "./hashline";
+import { lineHashes, formatRegion, HASH_SEP } from "./hashline";
 import { toCwd } from "./paths";
 import { abortIf } from "./utils";
 import { fileSnap } from "./file-reader";
@@ -86,7 +86,7 @@ export async function fmtReadPreview(
 	const selected = allLines.slice(startLine - 1, endIdx);
 	const allHashes = precomputedHashes ?? lineHashes(text);
 	const selectedHashes = allHashes.slice(startLine - 1, endIdx);
-	const formatted = fmtRegion(selectedHashes, selected, startLine);
+	const formatted = formatRegion(selectedHashes, selected, startLine);
 
 	const truncation = truncateHead(formatted);
 	if (truncation.firstLineExceedsLimit) {

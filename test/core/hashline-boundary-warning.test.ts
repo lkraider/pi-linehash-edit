@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyEdits, resEdits, lineHashes } from "../../src/hashline";
+import { applyEdits, parseEdits, lineHashes } from "../../src/hashline";
 import { anchorAt } from "../support/fixtures";
 
 describe("boundary duplication [W_DUP] warning", () => {
@@ -7,7 +7,7 @@ describe("boundary duplication [W_DUP] warning", () => {
     const file = "before\nline1\nline2\nafter\n";
     const hashes = lineHashes(file);
 
-    const result = applyEdits(file, resEdits([
+    const result = applyEdits(file, parseEdits([
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: ["new1", "new2", "after"] },
     ]));
 
@@ -19,7 +19,7 @@ describe("boundary duplication [W_DUP] warning", () => {
     const file = "before\nline1\nline2\nafter\n";
     const hashes = lineHashes(file);
 
-    const result = applyEdits(file, resEdits([
+    const result = applyEdits(file, parseEdits([
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: ["before", "new1", "new2"] },
     ]));
 
@@ -31,7 +31,7 @@ describe("boundary duplication [W_DUP] warning", () => {
     const file = "before\nline1\nline2\nafter\n";
     const hashes = lineHashes(file);
 
-    const result = applyEdits(file, resEdits([
+    const result = applyEdits(file, parseEdits([
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: ["new1", "new2"] },
     ]));
 
@@ -42,7 +42,7 @@ describe("boundary duplication [W_DUP] warning", () => {
     const file = "before\nline1\nline2\nafter\n";
     const hashes = lineHashes(file);
 
-    const result = applyEdits(file, resEdits([
+    const result = applyEdits(file, parseEdits([
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: ["before", "new1", "after"] },
     ]));
 
@@ -54,7 +54,7 @@ describe("boundary duplication [W_DUP] warning", () => {
     const file = "if (a) {\n  x();\n}\n}\n";
     const hashes = lineHashes(file);
 
-    const result = applyEdits(file, resEdits([
+    const result = applyEdits(file, parseEdits([
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["  z();", "}"] },
     ]));
 
@@ -66,7 +66,7 @@ describe("boundary duplication [W_DUP] warning", () => {
     const file = "before\nline1\nline2\nafter\n";
     const hashes = lineHashes(file);
 
-    const result = applyEdits(file, resEdits([
+    const result = applyEdits(file, parseEdits([
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["new1"] },
       { hash_range_inclusive: [anchorAt(hashes, 3), anchorAt(hashes, 3)], content_lines: ["new2", "after"] },
     ]));

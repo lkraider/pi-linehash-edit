@@ -18,8 +18,8 @@ import { resolveTarget, writeAtomic } from "./fs-write";
 import {
   applyEdits,
   lineHashes,
-  resEdits,
-  type HTEdit,
+  parseEdits,
+  type RawEdit,
 } from "./hashline";
 import { toCwd } from "./paths";
 import { fileSnap } from "./file-reader";
@@ -84,7 +84,7 @@ export const flatEditToolSchema = Type.Object(
 
 export type ReqParams = {
   path: string;
-  changes: HTEdit[];
+  changes: RawEdit[];
 };
 
 export type ReplaceDetails = {
@@ -98,7 +98,7 @@ export type ReplaceDetails = {
 
 interface PipelineResult {
   path: string;
-  toolEdits: HTEdit[];
+  toolEdits: RawEdit[];
   originalNormalized: string;
   result: string;
   bom: string;
@@ -156,7 +156,7 @@ export async function execPipeline(
 
   const path = params.path;
   const toolEdits = Array.isArray(params.changes)
-    ? (params.changes as HTEdit[])
+    ? (params.changes as RawEdit[])
     : [];
 
   if (toolEdits.length === 0) {
@@ -167,7 +167,7 @@ export async function execPipeline(
     path, cwd, signal, accessMode, undefined, MAX_HASH_LINES,
   );
 
-  const resolved = resEdits(toolEdits);
+  const resolved = parseEdits(toolEdits);
   const anchorResult = applyEdits(
     originalNormalized,
     resolved,
@@ -417,7 +417,7 @@ export function buildToolDef(opts: { flat: boolean; autoRead?: boolean }): ToolD
       const canonical = normReq(params);
 
 
-      const normalizedParams = canonical as { path: string; changes: HTEdit[] };
+      const normalizedParams = canonical as { path: string; changes: RawEdit[] };
       const path = normalizedParams.path;
       const absolutePath = toCwd(path, ctx.cwd);
       const mutationTargetPath = await resolveTarget(absolutePath);

@@ -16,7 +16,7 @@ export const HL_PREFIX_PLUS_RE = new RegExp(`^\\+\\s*${ANCHOR_CLASS}│`);
 export const DIFF_MINUS_RE = /^-\s*\d+\s{4}/;
 export const HL_BARE_PREFIX_RE = new RegExp(`^\\s*(${ANCHOR_CLASS})│`);
 
-function h2s(h: number): string {
+function hashToString(h: number): string {
 	const totalBits = HASH_LEN * ALPH_BITS;
 	const shift = 32 - totalBits;
 	const n = h >>> shift;
@@ -36,7 +36,7 @@ export function canon(line: string): string {
 }
 
 export function lineHash(line: string): string {
-	return h2s(fnv1a32(canon(line)));
+	return hashToString(fnv1a32(canon(line)));
 }
 
 export function lineHashes(content: string): string[] {

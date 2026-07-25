@@ -1,22 +1,22 @@
 import { abortIf, visLines } from "../utils";
 import { lineHashes, HASH_SEP } from "./hash";
 import {
-	valEdits,
+	resolveEdits,
 	assertNoBarePrefix,
-	warnUnicodeEsc,
-	fmtMismatch,
-	descEdit,
-	type RHEdit,
-	type NEdit,
-	type HEdit,
+	warnUnicodeEscape,
+	formatMismatch,
+	describeEdit,
+	type ResolvedEdit,
+	type NoopEdit,
+	type ParsedEdit,
 } from "./resolve";
 
-type LIdx = {
+type LineIndex = {
 	fileLines: string[];
 	lineStarts: number[];
 };
 
-export function buildIdx(content: string): LIdx {
+export function buildLineIndex(content: string): LineIndex {
 	const fileLines = content.split("\n");
 	const lineStarts: number[] = [];
 	let offset = 0;
@@ -35,7 +35,7 @@ export function buildIdx(content: string): LIdx {
 	};
 };
 
-type RESpan = {
+type ReplaceSpan = {
 	kind: "replace";
 	index: number;
 	label: string;
@@ -62,13 +62,13 @@ function throwConflict(
 	);
 }
 
-function resToSpan(
-  edit: RHEdit,
+function editToSpan(
+  edit: ResolvedEdit,
   index: number,
   content: string,
-  lineIndex: LIdx,
-  noopEdits: NEdit[],
-): RESpan | null {
+  lineIndex: LineIndex,
+  noopEdits: NoopEdit[],
+): ReplaceSpan | null {
   const { fileLines, lineStarts } = lineIndex;
 
   const startLine = edit.hash_range_inclusive[0].line;
@@ -88,7 +88,7 @@ function resToSpan(
     return null;
   }
 
-  const label = descEdit(edit);
+  const label = describeEdit(edit);
 
   if (edit.content_lines.length > 0) {
     return {
@@ -133,7 +133,7 @@ function resToSpan(
   };
 }
 
-function assertNoConflict(spans: RESpan[]): void {
+function assertNoConflict(spans: ReplaceSpan[]): void {
 	for (let leftIndex = 0; leftIndex < spans.length; leftIndex++) {
 		const left = spans[leftIndex]!;
 		for (
@@ -154,18 +154,18 @@ function assertNoConflict(spans: RESpan[]): void {
 	}
 }
 
-function resSpans(
-	edits: RHEdit[],
+function editsToSpans(
+	edits: ResolvedEdit[],
 	content: string,
-	lineIndex: LIdx,
-	noopEdits: NEdit[],
+	lineIndex: LineIndex,
+	noopEdits: NoopEdit[],
 	signal: AbortSignal | undefined,
-): RESpan[] {
+): ReplaceSpan[] {
 	const seenSpanKeys = new Set<string>();
-	const resolvedSpans: RESpan[] = [];
+	const resolvedSpans: ReplaceSpan[] = [];
 	for (const [index, edit] of edits.entries()) {
 	abortIf(signal);
-		const span = resToSpan(
+		const span = editToSpan(
 			edit,
 			index,
 			content,
@@ -196,7 +196,7 @@ function resSpans(
 
 function assemble(
 	content: string,
-	spans: RESpan[],
+	spans: ReplaceSpan[],
 	signal: AbortSignal | undefined,
 ): string {
 	let result = content;
@@ -210,7 +210,7 @@ function assemble(
 
 export function applyEdits(
 	content: string,
-	edits: HEdit[],
+	edits: ParsedEdit[],
 	signal?: AbortSignal,
 	precomputedHashes?: string[],
 	filePath?: string,
@@ -219,7 +219,7 @@ export function applyEdits(
 	firstChangedLine: number | undefined;
 	lastChangedLine: number | undefined;
 	warnings?: string[];
-	noopEdits?: NEdit[];
+	noopEdits?: NoopEdit[];
 } {
 	abortIf(signal);
 	if (!edits.length)
@@ -229,12 +229,12 @@ export function applyEdits(
 			lastChangedLine: undefined,
 		};
 
-	const lineIndex = buildIdx(content);
+	const lineIndex = buildLineIndex(content);
 	const fileHashes = precomputedHashes ?? lineHashes(content);
-	const noopEdits: NEdit[] = [];
+	const noopEdits: NoopEdit[] = [];
 	const warnings: string[] = [];
 
-	const { resolved, mismatches, boundaryWarnings } = valEdits(
+	const { resolved, mismatches, boundaryWarnings } = resolveEdits(
 		edits,
 		lineIndex.fileLines,
 		fileHashes,
@@ -243,12 +243,12 @@ export function applyEdits(
 	);
 	if (mismatches.length) {
 		throw new Error(
-			fmtMismatch(mismatches, lineIndex.fileLines, fileHashes, filePath),
+			formatMismatch(mismatches, lineIndex.fileLines, fileHashes, filePath),
 		);
 	}
 
 	assertNoBarePrefix(edits, lineIndex.fileLines, fileHashes);
-	warnUnicodeEsc(edits, warnings);
+	warnUnicodeEscape(edits, warnings);
 
 	for (const bw of boundaryWarnings) {
 		const edge = bw.kind === "trailing" ? "ends with" : "starts with";
@@ -258,7 +258,7 @@ export function applyEdits(
 		);
 	}
 
-	const orderedSpans = resSpans(
+	const orderedSpans = editsToSpans(
 		resolved,
 		content,
 		lineIndex,
@@ -279,14 +279,14 @@ export function applyEdits(
 	};
 }
 
-export function fmtRegion(
+export function formatRegion(
 	hashes: string[],
 	lines: string[],
 	startLine = 1,
 ): string {
 	if (hashes.length !== lines.length) {
 		throw new Error(
-			`fmtRegion: hashes.length (${hashes.length}) must match lines.length (${lines.length}).`,
+			`formatRegion: hashes.length (${hashes.length}) must match lines.length (${lines.length}).`,
 		);
 	}
 	return lines

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyEdits,
-  type HEdit,
+  type ParsedEdit,
 } from "../../src/hashline";
 import { makeTag, useTestHome } from "../support/fixtures";
 
@@ -16,7 +16,7 @@ describe("applyEdits — basic operations", () => {
 
 	it("replaces a single line", async () => {
 		const content = "aaa\nbbb\nccc";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 2, home.testPath)], content_lines: ["BBB"] },
 		];
 		const result = applyEdits(content, edits);
@@ -26,7 +26,7 @@ describe("applyEdits — basic operations", () => {
 
 	it("replaces a single line with multiple lines", async () => {
 		const content = "aaa\nbbb\nccc";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 2, home.testPath)], content_lines: ["BBB", "B2"] },
 		];
 		const result = applyEdits(content, edits);
@@ -35,7 +35,7 @@ describe("applyEdits — basic operations", () => {
 
 	it("deletes a single line (empty lines array)", async () => {
 		const content = "aaa\nbbb\nccc";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 2, home.testPath)], content_lines: [] },
 		];
 		const result = applyEdits(content, edits);
@@ -44,7 +44,7 @@ describe("applyEdits — basic operations", () => {
 
   it("treats lines:[\"\"] as inserting a blank line", async () => {
     const content = "aaa\nbbb\nccc\n";
-    const edits: HEdit[] = [
+    const edits: ParsedEdit[] = [
       { hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 2, home.testPath)], content_lines: [""] },
     ];
     const result = applyEdits(content, edits);
@@ -53,7 +53,7 @@ describe("applyEdits — basic operations", () => {
 
   it("treats lines:[\"\"] as a blank line for range replaces too", async () => {
     const content = "aaa\nbbb\nccc\nddd\n";
-    const edits: HEdit[] = [
+    const edits: ParsedEdit[] = [
       {
         hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 3, home.testPath)],
         content_lines: [""],
@@ -65,7 +65,7 @@ describe("applyEdits — basic operations", () => {
 
 	it("does not normalize multi-element empty arrays (those are blank lines)", async () => {
 		const content = "aaa\nbbb\n";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 2, home.testPath)], content_lines: ["", ""] },
 		];
 		const result = applyEdits(content, edits);
@@ -75,7 +75,7 @@ describe("applyEdits — basic operations", () => {
 
 	it("replaces a range of lines", async () => {
 		const content = "aaa\nbbb\nccc\nddd";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{
 				hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 3, home.testPath)],
 				content_lines: ["BBB", "CCC"],
@@ -87,7 +87,7 @@ describe("applyEdits — basic operations", () => {
 
 	it("deletes a range of lines", async () => {
 		const content = "aaa\nbbb\nccc\nddd";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{
 				hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 3, home.testPath)],
 				content_lines: [],
@@ -101,7 +101,7 @@ describe("applyEdits — basic operations", () => {
 describe("applyEdits — multi-edit ordering", () => {
 	it("applies multiple edits bottom-up correctly", async () => {
 		const content = "aaa\nbbb\nccc";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 1, home.testPath), await makeTag(content, 1, home.testPath)], content_lines: ["AAA"] },
 			{ hash_range_inclusive: [await makeTag(content, 3, home.testPath), await makeTag(content, 3, home.testPath)], content_lines: ["CCC"] },
 		];
@@ -112,7 +112,7 @@ describe("applyEdits — multi-edit ordering", () => {
 	it("deduplicates identical edits", async () => {
 		const content = "aaa\nbbb\nccc";
 		const pos = await makeTag(content, 2, home.testPath);
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [{ ...pos }, { ...pos }], content_lines: ["BBB"] },
 			{ hash_range_inclusive: [{ ...pos }, { ...pos }], content_lines: ["BBB"] },
 		];
@@ -123,7 +123,7 @@ describe("applyEdits — multi-edit ordering", () => {
 	it("does not mutate caller-owned edit arrays while deduplicating", async () => {
 		const content = "aaa\nbbb\nccc";
 		const pos = await makeTag(content, 2, home.testPath);
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [{ ...pos }, { ...pos }], content_lines: ["BBB"] },
 			{ hash_range_inclusive: [{ ...pos }, { ...pos }], content_lines: ["BBB"] },
 		];
@@ -139,7 +139,7 @@ describe("applyEdits — multi-edit ordering", () => {
 describe("applyEdits — noop detection", () => {
 	it("detects single-line noop", async () => {
 		const content = "aaa\nbbb\nccc";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 2, home.testPath)], content_lines: ["bbb"] },
 		];
 		const result = applyEdits(content, edits);
@@ -149,7 +149,7 @@ describe("applyEdits — noop detection", () => {
 
 	it("detects range noop", async () => {
 		const content = "aaa\nbbb\nccc\nddd";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{
 				hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 3, home.testPath)],
 				content_lines: ["bbb", "ccc"],
@@ -161,7 +161,7 @@ describe("applyEdits — noop detection", () => {
 
 	it("rejects deleting an entire non-empty file", async () => {
 		const content = "aaa\nbbb";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{
 				hash_range_inclusive: [await makeTag(content, 1, home.testPath), await makeTag(content, 2, home.testPath)],
 				content_lines: [],
@@ -174,7 +174,7 @@ describe("applyEdits — noop detection", () => {
 
 	it("allows whole-file rewrite when the final content is non-empty", async () => {
 		const content = "aaa\nbbb";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{
 				hash_range_inclusive: [await makeTag(content, 1, home.testPath), await makeTag(content, 2, home.testPath)],
 				content_lines: ["ccc"],
@@ -188,7 +188,7 @@ describe("applyEdits — noop detection", () => {
 
 	it("allows replacing content with whitespace", async () => {
 		const content = "aaa";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 1, home.testPath), await makeTag(content, 1, home.testPath)], content_lines: ["\n"] },
 		];
 
@@ -201,7 +201,7 @@ describe("applyEdits — noop detection", () => {
 describe("applyEdits — boundary duplication warnings (no auto-fix)", () => {
 	it("warns on leading duplication, keeps the duplicate literally", async () => {
 		const content = "before\nold one\nold two\nafter";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{
 				hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 3, home.testPath)],
 				content_lines: ["before", "new one", "new two"],
@@ -216,7 +216,7 @@ describe("applyEdits — boundary duplication warnings (no auto-fix)", () => {
 
 	it("warns on trailing duplication, keeps the duplicate literally", async () => {
 		const content = "before\nold one\nold two\nafter";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{
 				hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 3, home.testPath)],
 				content_lines: ["new one", "new two", "after"],
@@ -233,7 +233,7 @@ describe("applyEdits — boundary duplication warnings (no auto-fix)", () => {
 describe("applyEdits — lastChangedLine tracking", () => {
 	it("tracks lastChangedLine when single-line replace expands to multiple lines", async () => {
 		const content = "aaa\nbbb\nccc";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{
 				hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 2, home.testPath)], content_lines: ["B1", "B2", "B3", "B4", "B5"],
 			},
@@ -247,7 +247,7 @@ describe("applyEdits — lastChangedLine tracking", () => {
 
 	it("tracks lastChangedLine correctly for single-line delete", async () => {
 		const content = "aaa\nbbb\nccc";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 2, home.testPath)], content_lines: [] },
 		];
 
@@ -259,7 +259,7 @@ describe("applyEdits — lastChangedLine tracking", () => {
 
 	it("tracks lastChangedLine correctly for multi-line delete", async () => {
 		const content = "aaa\nbbb\nccc\nddd\neee\nfff\nggg";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{
 				hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 4, home.testPath)],
 				content_lines: [],
@@ -276,7 +276,7 @@ describe("applyEdits — lastChangedLine tracking", () => {
 describe("applyEdits — edge cases (empty, single-line, no trailing newline)", () => {
 	it("edits a single-line file without trailing newline", async () => {
 		const content = "hello";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 1, home.testPath), await makeTag(content, 1, home.testPath)], content_lines: ["world"] },
 		];
 		const result = applyEdits(content, edits);
@@ -285,7 +285,7 @@ describe("applyEdits — edge cases (empty, single-line, no trailing newline)", 
 
 	it("edits a single-line file with trailing newline", async () => {
 		const content = "hello\n";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 1, home.testPath), await makeTag(content, 1, home.testPath)], content_lines: ["world"] },
 		];
 		const result = applyEdits(content, edits);
@@ -294,7 +294,7 @@ describe("applyEdits — edge cases (empty, single-line, no trailing newline)", 
 
 	it("edits a file with only a trailing newline (one blank line)", async () => {
 		const content = "\n";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 1, home.testPath), await makeTag(content, 1, home.testPath)], content_lines: ["hello"] },
 		];
 		const result = applyEdits(content, edits);
@@ -303,7 +303,7 @@ describe("applyEdits — edge cases (empty, single-line, no trailing newline)", 
 
 	it("deletes the only line in a single-line file without trailing newline", async () => {
 		const content = "hello";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 1, home.testPath), await makeTag(content, 1, home.testPath)], content_lines: [] },
 		];
 		expect(() => applyEdits(content, edits)).toThrow(/^\[E_WOULD_EMPTY\]/);
@@ -311,7 +311,7 @@ describe("applyEdits — edge cases (empty, single-line, no trailing newline)", 
 
 	it("replaces a line in a file with no trailing newline", async () => {
 		const content = "aaa\nbbb\nccc";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 2, home.testPath)], content_lines: ["BBB"] },
 		];
 		const result = applyEdits(content, edits);
@@ -320,7 +320,7 @@ describe("applyEdits — edge cases (empty, single-line, no trailing newline)", 
 
 	it("appends a line to a file without trailing newline", async () => {
 		const content = "aaa\nbbb";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 2, home.testPath)], content_lines: ["bbb", "ccc"] },
 		];
 		const result = applyEdits(content, edits);
@@ -331,7 +331,7 @@ describe("applyEdits — edge cases (empty, single-line, no trailing newline)", 
 describe("applyEdits — trailing newline preservation", () => {
 	it("preserves trailing newline when replacing the last line of a file with one", async () => {
 		const content = "line1\n</br>\n";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 1, home.testPath), await makeTag(content, 1, home.testPath)], content_lines: ["LINE1"] },
 		];
 		const result = applyEdits(content, edits);
@@ -340,7 +340,7 @@ describe("applyEdits — trailing newline preservation", () => {
 
 	it("preserves trailing newline when replacing the last line itself", async () => {
 		const content = "line1\n</br>\n";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 2, home.testPath)], content_lines: ["<br/>"] },
 		];
 		const result = applyEdits(content, edits);
@@ -349,7 +349,7 @@ describe("applyEdits — trailing newline preservation", () => {
 
 	it("preserves trailing newline when replacing a range ending at the last line", async () => {
 		const content = "a\nb\nc\n";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 3, home.testPath)], content_lines: ["B", "C"] },
 		];
 		const result = applyEdits(content, edits);
@@ -358,7 +358,7 @@ describe("applyEdits — trailing newline preservation", () => {
 
 	it("does not add trailing newline when original had none", async () => {
 		const content = "line1\n</br>";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 1, home.testPath), await makeTag(content, 1, home.testPath)], content_lines: ["LINE1"] },
 		];
 		const result = applyEdits(content, edits);
@@ -367,7 +367,7 @@ describe("applyEdits — trailing newline preservation", () => {
 
 	it("does not add trailing newline for mid-file edits", async () => {
 		const content = "a\nb\nc\n";
-		const edits: HEdit[] = [
+		const edits: ParsedEdit[] = [
 			{ hash_range_inclusive: [await makeTag(content, 2, home.testPath), await makeTag(content, 2, home.testPath)], content_lines: ["B"] },
 		];
 		const result = applyEdits(content, edits);
