@@ -2,63 +2,60 @@ import { describe, expect, it } from "vitest";
 import { parseText, parseHashRef } from "../../src/hashline";
 
 describe("parseHashRef", () => {
-	it("parses a hash anchor without # prefix", () => {
-		const ref = parseHashRef("aB3");
-		expect(ref).toEqual({ hash: "aB3" });
+	it("parses a line:hash anchor", () => {
+		const ref = parseHashRef("12:aB");
+		expect(ref).toEqual({ line: 12, hash: "aB" });
 	});
 
 	it("rejects trailing content after the anchor", () => {
-		expect(() => parseHashRef("aB3:const x = 1;")).toThrow(
-			/Expected a 3-char base64 anchor/,
+		expect(() => parseHashRef("12:aB:const x = 1;")).toThrow(
+			/Expected "line:hash"/,
 		);
 	});
 
-	it("rejects a full HASH│content line copied into hash_range_inclusive", () => {
-		expect(() => parseHashRef("aB3│const x = 1;")).toThrow(
-			/hash_range_inclusive must contain the 3-char hash only/,
+	it("rejects a full LINE:HASH│content line copied into hash_range_inclusive", () => {
+		expect(() => parseHashRef("12:aB│const x = 1;")).toThrow(
+			/hash_range_inclusive must contain "line:hash" only/,
 		);
 	});
 	it("rejects leading >>> markers (strict mode: no marker stripping)", () => {
-		expect(() => parseHashRef(">>> aB3")).toThrow(/E_BAD_REF/);
+		expect(() => parseHashRef(">>> 12:aB")).toThrow(/E_BAD_REF/);
 	});
 
 	it("rejects + and - diff markers (strict mode: anchor only)", () => {
-		expect(() => parseHashRef("+aB3")).toThrow(/E_BAD_REF/);
-		expect(() => parseHashRef("-aB3")).toThrow(/E_BAD_REF/);
-		expect(() => parseHashRef("-#aB3")).toThrow(/E_BAD_REF/);
+		expect(() => parseHashRef("+12:aB")).toThrow(/E_BAD_REF/);
+		expect(() => parseHashRef("-12:aB")).toThrow(/E_BAD_REF/);
 	});
 
 	it("accepts a hash that starts with - in the body (alphabet char, not a marker)", () => {
-		expect(parseHashRef("-qk")).toEqual({ hash: "-qk" });
-		expect(parseHashRef("-_-")).toEqual({ hash: "-_-" });
-		expect(parseHashRef("---")).toEqual({ hash: "---" });
+		expect(parseHashRef("12:-q")).toEqual({ line: 12, hash: "-q" });
+		expect(parseHashRef("12:--")).toEqual({ line: 12, hash: "--" });
 	});
 
 	it("rejects + as a hash body character (not in alphabet)", () => {
-		expect(() => parseHashRef("+qk")).toThrow(/E_BAD_REF/);
-		expect(() => parseHashRef("#+qk")).toThrow(/E_BAD_REF/);
+		expect(() => parseHashRef("12:+q")).toThrow(/E_BAD_REF/);
 	});
 
 	it("rejects malformed anchors with E_BAD_REF", () => {
 		expect(() => parseHashRef("invalid")).toThrow(/^\[E_BAD_REF\]/);
 	});
 
-	it("rejects legacy LINE#HASH format", () => {
-		expect(() => parseHashRef("5aB3")).toThrow(
-			/Use the hash alone/,
-		);
+	it("rejects a bare hash with no line number (the old dialect)", () => {
+		expect(() => parseHashRef("aB")).toThrow(/^\[E_BAD_REF\]/);
 	});
 
-	it("rejects wrong-length anchors", () => {
-		expect(() => parseHashRef("aB")).toThrow(/E_BAD_REF/);
-		expect(() => parseHashRef("aB3x")).toThrow(/E_BAD_REF/);
-		expect(() => parseHashRef("aB3x")).toThrow(/E_BAD_REF/);
-		expect(() => parseHashRef("#aB3x")).toThrow(/E_BAD_REF/);
-		expect(() => parseHashRef("#aB3x")).toThrow(/E_BAD_REF/);
+	it("rejects wrong-length hash bodies", () => {
+		expect(() => parseHashRef("12:a")).toThrow(/E_BAD_REF/);
+		expect(() => parseHashRef("12:aBc")).toThrow(/E_BAD_REF/);
 	});
 
 	it("rejects anchors with invalid alphabet", () => {
-		expect(() => parseHashRef("!@#")).toThrow(/^\[E_BAD_REF\]/);
+		expect(() => parseHashRef("12:!@")).toThrow(/^\[E_BAD_REF\]/);
+	});
+
+	it("rejects a missing or non-numeric line number", () => {
+		expect(() => parseHashRef(":aB")).toThrow(/^\[E_BAD_REF\]/);
+		expect(() => parseHashRef("x:aB")).toThrow(/^\[E_BAD_REF\]/);
 	});
 });
 
@@ -107,26 +104,26 @@ describe("parseText", () => {
   it("returns empty string as a single empty line for blank content (array input)", () => {
     expect(parseText([""])).toEqual([""]);
   });
-	it("rejects array input that contains HASH| prefixes", () => {
-		expect(() => parseText(["+aB3│foo", "+xYp│bar"])).toThrow(
+	it("rejects array input that contains LINE:HASH| prefixes", () => {
+		expect(() => parseText(["+1:aB│foo", "+2:xY│bar"])).toThrow(
 			/^\[E_INVALID_PATCH\]/,
 		);
 	});
 
-	it("rejects diff-preview hunks with + and context hash prefixes", () => {
+	it("rejects diff-preview hunks with + and context anchor prefixes", () => {
 		expect(() =>
-				parseText([" aB3│keep", "+xYp│new", " mNo│after"]),
+				parseText([" 1:aB│keep", "+2:xY│new", " 3:mN│after"]),
 		).toThrow(/^\[E_INVALID_PATCH\]/);
 	});
 
 	it("rejects diff-preview deletion rows", () => {
 		expect(() =>
-				parseText([" aB3│keep", "-10    old", " xYp│after"]),
+				parseText([" 1:aB│keep", "-10    old", " 2:xY│after"]),
 		).toThrow(/^\[E_INVALID_PATCH\]/);
 	});
 
   it("rejects string-form rendered diff hunks (string input rejected before prefix check)", () => {
-    const input = " aB3│keep\n-10    old\n+xYp│new\n mNo│after";
+    const input = " 1:aB│keep\n-10    old\n+2:xY│new\n 3:mN│after";
     expect(() => parseText(input)).toThrow(
       /must be a native JSON array of strings, not a JSON string/,
     );

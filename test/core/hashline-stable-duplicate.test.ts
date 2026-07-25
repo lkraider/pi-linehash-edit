@@ -1,117 +1,82 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
-import { readFile } from "fs/promises";
+import { describe, expect, it } from "vitest";
 import { lineHashes, applyEdits, type HEdit } from "../../src/hashline";
-import { useTestHome, withTempFile, setupIntegrationTest, getText, extractHash } from "../support/fixtures";
+import { withTempFile, setupIntegrationTest, getText, extractHash } from "../support/fixtures";
 
-const home = useTestHome();
-
-describe("stable hashing with duplicate content lines", () => {
-  it("removing the first of two identical lines preserves the second line's hash", async () => {
+describe("duplicate-content lines share a hash, disambiguated by line number", () => {
+  it("two identical lines get the same hash", () => {
     const content = "function a() {\n  return 1;\n}\n\nfunction b() {\n  return 2;\n}\n";
-    const hashes = await lineHashes(content, home.testPath);
+    const hashes = lineHashes(content);
 
     const firstBraceHash = hashes[2]!;
     const secondBraceHash = hashes[6]!;
-    expect(firstBraceHash).not.toBe(secondBraceHash);
+    expect(firstBraceHash).toBe(secondBraceHash);
+  });
+
+  it("removing the first of two identical lines leaves the second at its own shifted line, same hash", () => {
+    const content = "function a() {\n  return 1;\n}\n\nfunction b() {\n  return 2;\n}\n";
+    const hashes = lineHashes(content);
+    const braceHash = hashes[2]!;
 
     const edits: HEdit[] = [
       {
-        hash_range_inclusive: [{ hash: hashes[0]! }, { hash: firstBraceHash }],
+        hash_range_inclusive: [{ line: 1, hash: hashes[0]! }, { line: 3, hash: braceHash }],
         content_lines: [],
       },
     ];
 
-    const result = applyEdits(content, edits, undefined, hashes, home.testPath);
-    const newContent = result.content;
-    expect(newContent).toBe("\nfunction b() {\n  return 2;\n}\n");
+    const result = applyEdits(content, edits);
+    expect(result.content).toBe("\nfunction b() {\n  return 2;\n}\n");
 
-    const resultHashes = await lineHashes(newContent, home.testPath, {
-      content,
-      hashes,
-      removedHashes: new Set([hashes[0]!, firstBraceHash]),
-    });
-
-    expect(resultHashes[3]).toBe(secondBraceHash);
+    const resultHashes = lineHashes(result.content);
+    expect(resultHashes[3]).toBe(braceHash);
   });
 
-  it("removing the second of two identical lines preserves the first line's hash", async () => {
-    const content = "function a() {\n  return 1;\n}\n\nfunction b() {\n  return 2;\n}\n";
-    const hashes = await lineHashes(content, home.testPath);
-
-    const firstBraceHash = hashes[2]!;
-    const secondBraceHash = hashes[6]!;
-
-    const edits: HEdit[] = [
-      {
-        hash_range_inclusive: [{ hash: hashes[4]! }, { hash: secondBraceHash }],
-        content_lines: [],
-      },
-    ];
-
-    const result = applyEdits(content, edits, undefined, hashes, home.testPath);
-    const newContent = result.content;
-    expect(newContent).toBe("function a() {\n  return 1;\n}\n\n");
-
-    const resultHashes = await lineHashes(newContent, home.testPath, {
-      content,
-      hashes,
-      removedHashes: new Set([hashes[4]!, secondBraceHash]),
-    });
-
-    expect(resultHashes[2]).toBe(firstBraceHash);
-  });
-
-  it("removing a unique line between two identical lines preserves both brace hashes", async () => {
+  it("removing a unique line between two identical lines leaves both brace hashes unchanged", () => {
     const content = "a\n}\nb\n}\nc\n}\nd\n";
-    const hashes = await lineHashes(content, home.testPath);
-
-    const brace1 = hashes[1]!;
-    const brace2 = hashes[3]!;
-    const brace3 = hashes[5]!;
-    expect(new Set([brace1, brace2, brace3]).size).toBe(3);
+    const hashes = lineHashes(content);
+    const braceHash = hashes[1]!;
+    expect(hashes[3]).toBe(braceHash);
+    expect(hashes[5]).toBe(braceHash);
 
     const edits: HEdit[] = [
       {
-        hash_range_inclusive: [{ hash: hashes[2]! }, { hash: hashes[2]! }],
+        hash_range_inclusive: [{ line: 3, hash: hashes[2]! }, { line: 3, hash: hashes[2]! }],
         content_lines: [],
       },
     ];
 
-    const result = applyEdits(content, edits, undefined, hashes, home.testPath);
-    const newContent = result.content;
-    expect(newContent).toBe("a\n}\n}\nc\n}\nd\n");
+    const result = applyEdits(content, edits);
+    expect(result.content).toBe("a\n}\n}\nc\n}\nd\n");
 
-    const resultHashes = await lineHashes(newContent, home.testPath, {
-      content,
-      hashes,
-      removedHashes: new Set([hashes[2]!]),
-    });
-
-    expect(resultHashes[1]).toBe(brace1);
-    expect(resultHashes[2]).toBe(brace2);
-    expect(resultHashes[4]).toBe(brace3);
+    const resultHashes = lineHashes(result.content);
+    expect(resultHashes[1]).toBe(braceHash);
+    expect(resultHashes[2]).toBe(braceHash);
+    expect(resultHashes[4]).toBe(braceHash);
   });
+});
 
-  it("end-to-end via tool: removing one of two identical lines preserves the correct hash", async () => {
+describe("end-to-end via tool: duplicate lines after an edit", () => {
+  it("removing one of two identical lines leaves the surviving one addressable at its shifted line", async () => {
     const file = "function a() {\n  return 1;\n}\n\nfunction b() {\n  return 2;\n}\n";
-    await withTempFile("sample.ts", file, async ({ cwd, path }) => {
+    await withTempFile("sample.ts", file, async ({ cwd }) => {
       const { ctx, readTool, editTool } = setupIntegrationTest(cwd);
 
       const read1 = await readTool.execute("r1", { path: "sample.ts" }, undefined, undefined, ctx);
       const lines1 = getText(read1).split("\n");
 
-      const firstBraceHash = extractHash(lines1.find((l) => l.includes("│}"))!);
       const braceLines = lines1.filter((l) => l.endsWith("│}"));
       expect(braceLines).toHaveLength(2);
-      const secondBraceHash = extractHash(braceLines[1]!);
-      expect(firstBraceHash).not.toBe(secondBraceHash);
+      const firstBraceHash = extractHash(braceLines[0]!).split(":")[1];
+      const secondBraceHash = extractHash(braceLines[1]!).split(":")[1];
+      expect(firstBraceHash).toBe(secondBraceHash);
 
       const line1Hash = extractHash(lines1.find((l) => l.includes("│function a()"))!);
+      const firstBraceAnchor = extractHash(braceLines[0]!);
       await editTool.execute(
         "e1",
         {
           path: "sample.ts",
-          changes: [{ hash_range_inclusive: [line1Hash, firstBraceHash], content_lines: [] }],
+          changes: [{ hash_range_inclusive: [line1Hash, firstBraceAnchor], content_lines: [] }],
         },
         undefined,
         undefined,
@@ -122,12 +87,11 @@ describe("stable hashing with duplicate content lines", () => {
       const lines2 = getText(read2).split("\n");
       const survivingBrace = lines2.find((l) => l.endsWith("│}"))!;
       expect(survivingBrace).toBeTruthy();
-      const survivingHash = extractHash(survivingBrace);
-      expect(survivingHash).toBe(secondBraceHash);
+      expect(extractHash(survivingBrace).split(":")[1]).toBe(secondBraceHash);
     });
   });
 
-  it("end-to-end via tool: interior duplicate line (not a boundary) keeps its hash", async () => {
+  it("interior duplicate line (not a boundary) keeps its hash after an unrelated edit", async () => {
     const file = "a\nb\nc\nb\nd\n";
     await withTempFile("sample.ts", file, async ({ cwd }) => {
       const { ctx, readTool, editTool } = setupIntegrationTest(cwd);
@@ -137,9 +101,8 @@ describe("stable hashing with duplicate content lines", () => {
 
       const bLines = lines1.filter((l) => l.endsWith("│b"));
       expect(bLines).toHaveLength(2);
-      const firstBHash = extractHash(bLines[0]!);
-      const secondBHash = extractHash(bLines[1]!);
-      expect(firstBHash).not.toBe(secondBHash);
+      const bHash = extractHash(bLines[0]!).split(":")[1];
+      expect(extractHash(bLines[1]!).split(":")[1]).toBe(bHash);
 
       const aHash = extractHash(lines1.find((l) => l.endsWith("│a"))!);
       const cHash = extractHash(lines1.find((l) => l.endsWith("│c"))!);
@@ -159,12 +122,12 @@ describe("stable hashing with duplicate content lines", () => {
       const lines2 = getText(read2).split("\n");
       const survivingB = lines2.find((l) => l.endsWith("│b"))!;
       expect(survivingB).toBeTruthy();
-      const survivingHash = extractHash(survivingB);
-      expect(survivingHash).toBe(secondBHash);
+      expect(extractHash(survivingB).split(":")[1]).toBe(bHash);
+      expect(survivingB.startsWith("1:")).toBe(true);
     });
   });
 
-  it("end-to-end via tool: multi-edit bulk with interior duplicates preserves all surviving hashes", async () => {
+  it("multi-edit bulk with interior duplicates preserves all surviving hashes", async () => {
     const file = "a\nb\nc\nb\nd\ne\nb\nf\n";
     await withTempFile("sample.ts", file, async ({ cwd }) => {
       const { ctx, readTool, editTool } = setupIntegrationTest(cwd);
@@ -174,10 +137,10 @@ describe("stable hashing with duplicate content lines", () => {
 
       const bLines = lines1.filter((l) => l.endsWith("│b"));
       expect(bLines).toHaveLength(3);
-      const firstBHash = extractHash(bLines[0]!);
-      const secondBHash = extractHash(bLines[1]!);
-      const thirdBHash = extractHash(bLines[2]!);
-      expect(new Set([firstBHash, secondBHash, thirdBHash]).size).toBe(3);
+      const bHash = extractHash(bLines[0]!).split(":")[1];
+      for (const line of bLines) {
+        expect(extractHash(line).split(":")[1]).toBe(bHash);
+      }
 
       const aHash = extractHash(lines1.find((l) => l.endsWith("│a"))!);
       const cHash = extractHash(lines1.find((l) => l.endsWith("│c"))!);
@@ -202,9 +165,9 @@ describe("stable hashing with duplicate content lines", () => {
       const lines2 = getText(read2).split("\n");
       const survivingBLines = lines2.filter((l) => l.endsWith("│b"));
       expect(survivingBLines).toHaveLength(2);
-      const survivingHashes = survivingBLines.map(extractHash);
-      expect(survivingHashes).toContain(secondBHash);
-      expect(survivingHashes).toContain(thirdBHash);
+      for (const line of survivingBLines) {
+        expect(extractHash(line).split(":")[1]).toBe(bHash);
+      }
     });
   });
 });

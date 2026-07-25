@@ -1,15 +1,12 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { describe, expect, it } from "vitest";
 import { readFile } from "fs/promises";
 import { lineHashes } from "../../src/hashline";
-import { loadHashStore, getSnapshot } from "../../src/hash-store";
 import {
   withTempFile,
   setupIntegrationTest,
-  useTestHome,
   getText,
+  anchorAt,
 } from "../support/fixtures";
-
-const home = useTestHome();
 
 describe("undo_last_replace", () => {
   it("returns error when there is no undo history", async () => {
@@ -35,7 +32,7 @@ describe("undo_last_replace", () => {
       const { pi, getTool, ctx } = setupIntegrationTest(cwd);
       const editTool = getTool("replace");
       const undo = getTool("undo_last_replace");
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\n");
 
       await editTool.execute(
         "e1",
@@ -43,7 +40,7 @@ describe("undo_last_replace", () => {
           path: "sample.ts",
           changes: [
             {
-              hash_range_inclusive: [hashes[1]!, hashes[1]!],
+              hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)],
               content_lines: ["BBB"],
             },
           ],
@@ -83,7 +80,7 @@ describe("undo_last_replace", () => {
       const { pi, getTool, ctx } = setupIntegrationTest(cwd);
       const editTool = getTool("replace");
       const undo = getTool("undo_last_replace");
-      const hashes = await lineHashes("aaa\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nccc\n");
 
       await editTool.execute(
         "e1",
@@ -91,7 +88,7 @@ describe("undo_last_replace", () => {
           path: "sample.ts",
           changes: [
             {
-              hash_range_inclusive: [hashes[1]!, hashes[1]!],
+              hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)],
               content_lines: ["BBB", "B2"],
             },
           ],
@@ -120,7 +117,7 @@ describe("undo_last_replace", () => {
       const { pi, getTool, ctx } = setupIntegrationTest(cwd);
       const editTool = getTool("replace");
       const undo = getTool("undo_last_replace");
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\n");
 
       await editTool.execute(
         "e1",
@@ -128,7 +125,7 @@ describe("undo_last_replace", () => {
           path: "sample.ts",
           changes: [
             {
-              hash_range_inclusive: [hashes[1]!, hashes[1]!],
+              hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)],
               content_lines: [],
             },
           ],
@@ -157,7 +154,7 @@ describe("undo_last_replace", () => {
       const { pi, getTool, ctx } = setupIntegrationTest(cwd);
       const editTool = getTool("replace");
       const undo = getTool("undo_last_replace");
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\n");
 
       await editTool.execute(
         "e1",
@@ -165,7 +162,7 @@ describe("undo_last_replace", () => {
           path: "sample.ts",
           changes: [
             {
-              hash_range_inclusive: [hashes[1]!, hashes[2]!],
+              hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)],
               content_lines: ["XXX", "YYY", "ZZZ"],
             },
           ],
@@ -189,12 +186,13 @@ describe("undo_last_replace", () => {
     });
   });
 
-  it("restores hash store snapshot after undo", async () => {
+  it("read after undo gives back the original anchors", async () => {
     await withTempFile("sample.ts", "aaa\nbbb\nccc\n", async ({ cwd }) => {
       const { pi, getTool, ctx } = setupIntegrationTest(cwd);
       const editTool = getTool("replace");
+      const readTool = getTool("read");
       const undo = getTool("undo_last_replace");
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = lineHashes("aaa\nbbb\nccc\n");
 
       await editTool.execute(
         "e1",
@@ -202,7 +200,7 @@ describe("undo_last_replace", () => {
           path: "sample.ts",
           changes: [
             {
-              hash_range_inclusive: [hashes[1]!, hashes[1]!],
+              hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)],
               content_lines: ["BBB"],
             },
           ],
@@ -220,11 +218,10 @@ describe("undo_last_replace", () => {
         ctx,
       );
 
-      const store = await loadHashStore();
-      const absPath = new URL(`file://${cwd}/sample.ts`).pathname;
-      const undoHashes = getSnapshot(store, absPath, "aaa\nbbb\nccc\n")
-        ?? getSnapshot(store, `/${cwd}/sample.ts`, "aaa\nbbb\nccc\n");
-      expect(undoHashes).toBeDefined();
+      const read = await readTool.execute("r1", { path: "sample.ts" }, undefined, undefined, ctx);
+      expect(getText(read)).toBe(
+        `${anchorAt(hashes, 1)}│aaa\n${anchorAt(hashes, 2)}│bbb\n${anchorAt(hashes, 3)}│ccc`,
+      );
     });
   });
 
@@ -233,7 +230,7 @@ describe("undo_last_replace", () => {
       const { pi, getTool, ctx } = setupIntegrationTest(cwd);
       const editTool = getTool("replace");
       const undo = getTool("undo_last_replace");
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\n");
 
       await editTool.execute(
         "e1",
@@ -241,7 +238,7 @@ describe("undo_last_replace", () => {
           path: "sample.ts",
           changes: [
             {
-              hash_range_inclusive: [hashes[1]!, hashes[1]!],
+              hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)],
               content_lines: ["BBB"],
             },
           ],
@@ -277,13 +274,13 @@ describe("undo_last_replace", () => {
       const { pi, getTool, ctx } = setupIntegrationTest(cwd);
       const editTool = getTool("replace");
       const undo = getTool("undo_last_replace");
-      const hashes = await lineHashes("line1\nline2\n", home.testPath);
+      const hashes = await lineHashes("line1\nline2\n");
 
       await editTool.execute(
         "e1",
         {
           path: "sample.ts",
-          hash_range_inclusive: [hashes[0]!, hashes[0]!],
+          hash_range_inclusive: [anchorAt(hashes, 1), anchorAt(hashes, 1)],
           content_lines: ["LINE1"],
         },
         undefined,

@@ -1,8 +1,7 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { describe, expect, it } from "vitest";
 import { lineHashes } from "../../src/hashline";
-import { withTempFile, withTempBytes, setupIntegrationTest, useTestHome } from "../support/fixtures";
+import { withTempFile, withTempBytes, setupIntegrationTest, anchorAt } from "../support/fixtures";
 
-const home = useTestHome();
 
 describe("file kind guards in tools", () => {
   it("edit decodes invalid utf-8 as replacement chars and writes them back as utf-8", async () => {
@@ -77,14 +76,14 @@ describe("file kind guards in tools", () => {
   it("edit rejects empty file deletion", async () => {
     await withTempFile("empty.txt", "a\n", async ({ cwd }) => {
       const { ctx, editTool } = setupIntegrationTest(cwd);
-      const hashes = await lineHashes("a\n", home.testPath);
+      const hashes = await lineHashes("a\n");
 
       await expect(
         editTool.execute(
           "e1",
           {
             path: "empty.txt",
-            changes: [{ hash_range_inclusive: [hashes[0]!, hashes[0]!], content_lines: [] }],
+            changes: [{ hash_range_inclusive: [anchorAt(hashes, 1), anchorAt(hashes, 1)], content_lines: [] }],
           },
           undefined,
           undefined,

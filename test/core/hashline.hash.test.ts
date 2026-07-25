@@ -1,23 +1,20 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
 	applyEdits,
 	lineHashes,
 	parseText,
 } from "../../src/hashline";
-import { useTestHome } from "../support/fixtures";
-
-const home = useTestHome();
 
 describe("strict hashline contract", () => {
-	it("preserves internal spaces when hashing", async () => {
-		const hashes = await lineHashes("a b", home.testPath);
-		const hashes2 = await lineHashes("ab", home.testPath);
+	it("preserves internal spaces when hashing", () => {
+		const hashes = lineHashes("a b");
+		const hashes2 = lineHashes("ab");
 		expect(hashes[0]).not.toBe(hashes2[0]);
 	});
 
-	it("trims trailing spaces when hashing", async () => {
-		const hashes = await lineHashes("value  ", home.testPath);
-		const hashes2 = await lineHashes("value", home.testPath);
+	it("trims trailing spaces when hashing", () => {
+		const hashes = lineHashes("value  ");
+		const hashes2 = lineHashes("value");
 		expect(hashes[0]).toBe(hashes2[0]);
 	});
 
@@ -25,69 +22,65 @@ describe("strict hashline contract", () => {
 		expect(parseText(["alpha", ""])).toEqual(["alpha", ""]);
 	});
 
-	it("rejects stale anchors instead of relocating by hash", () => {
+	it("rejects a stale anchor (line out of range) instead of relocating by hash", () => {
 		const content = ["a", "INSERTED", "b", "target", "c"].join("\n");
 		const stale = {
-      hash_range_inclusive: [{ hash: "ZZZZ" }, { hash: "ZZZZ" }], content_lines: ["updated"],
+      hash_range_inclusive: [{ line: 99, hash: "ZZ" }, { line: 99, hash: "ZZ" }], content_lines: ["updated"],
     } as any;
-		expect(() => applyEdits(content, [stale])).toThrow(/stale anchor/);
+		expect(() => applyEdits(content, [stale])).toThrow(/stale anchor/i);
+	});
+
+	it("rejects a stale anchor (wrong hash at a real line) instead of relocating", () => {
+		const content = ["a", "INSERTED", "b", "target", "c"].join("\n");
+		const stale = {
+      hash_range_inclusive: [{ line: 4, hash: "ZZ" }, { line: 4, hash: "ZZ" }], content_lines: ["updated"],
+    } as any;
+		expect(() => applyEdits(content, [stale])).toThrow(/stale anchor/i);
 	});
 });
 
-describe("perfect hashing", () => {
-	it("returns one hash per line, indexed 0-based by line number", async () => {
-		const hashes = await lineHashes("alpha\nbeta\ngamma", home.testPath);
+describe("line:hash addressing", () => {
+	it("returns one hash per line, 2-char base64", () => {
+		const hashes = lineHashes("alpha\nbeta\ngamma");
 		expect(hashes).toHaveLength(3);
-		expect(hashes[0]).toMatch(/^[A-Za-z0-9_\-]{3}$/);
-		expect(hashes[1]).toMatch(/^[A-Za-z0-9_\-]{3}$/);
-		expect(hashes[2]).toMatch(/^[A-Za-z0-9_\-]{3}$/);
+		expect(hashes[0]).toMatch(/^[A-Za-z0-9_-]{2}$/);
+		expect(hashes[1]).toMatch(/^[A-Za-z0-9_-]{2}$/);
+		expect(hashes[2]).toMatch(/^[A-Za-z0-9_-]{2}$/);
 	});
 
-	it("assigns different hashes to identical content at different positions", async () => {
+	it("gives identical content the same hash regardless of position", () => {
 		const file = [
 			"import { foo } from 'bar';",
 			"import { baz } from 'qux';",
 			"import { foo } from 'bar';",
 		].join("\n");
-		const hashes = await lineHashes(file, home.testPath);
-		expect(hashes[0]).not.toBe(hashes[2]);
+		const hashes = lineHashes(file);
+		expect(hashes[0]).toBe(hashes[2]);
 		expect(hashes[0]).not.toBe(hashes[1]);
-		expect(hashes[1]).not.toBe(hashes[2]);
 	});
 
-	it("assigns different hashes to symbol-only lines at different positions", async () => {
-		const file = [
-			"function a() {",
-			"  return 1;",
-			"}",
-			"function b() {",
-			"  return 2;",
-			"}",
-		].join("\n");
-		const hashes = await lineHashes(file, home.testPath);
-		expect(hashes[2]).not.toBe(hashes[5]);
-	});
-
-	it("lets the edit tool target a specific occurrence when content is duplicated", async () => {
+	it("lets the edit tool target a specific occurrence of duplicated content by line number", () => {
 		const file = [
 			"const x = 1;",
 			"const y = 2;",
 			"const x = 1;",
 		].join("\n");
-		const hashes = await lineHashes(file, home.testPath);
+		const hashes = lineHashes(file);
 		const result = applyEdits(file, [
-      { hash_range_inclusive: [{ hash: hashes[2]! }, { hash: hashes[2]! }], content_lines: ["const x = 999;"] },
+      { hash_range_inclusive: [{ line: 3, hash: hashes[2]! }, { line: 3, hash: hashes[2]! }], content_lines: ["const x = 999;"] },
     ]);
     expect(result.content).toBe("const x = 1;\nconst y = 2;\nconst x = 999;");
 	});
 
-	it("stale-anchor error shows the file's current state for context", () => {
+	it("a shared hash at the wrong line is still a stale anchor, never a silent relocation", () => {
 		const file = ["const x = 1;", "const y = 2;", "const x = 1;"].join("\n");
-		const staleHash = "ZZZZ";
+		const hashes = lineHashes(file);
+		expect(hashes[0]).toBe(hashes[2]);
+
 		let caught: Error | undefined;
 		try {
 			applyEdits(file, [
-        { hash_range_inclusive: [{ hash: staleHash }, { hash: staleHash }], content_lines: ["X"] },
+        { hash_range_inclusive: [{ line: 2, hash: hashes[0]! }, { line: 2, hash: hashes[0]! }], content_lines: ["X"] },
       ]);
     } catch (e) {
 			caught = e as Error;
@@ -97,61 +90,25 @@ describe("perfect hashing", () => {
 		expect(caught!.message).toContain("Call read()");
 	});
 
-	it("rejects an ambiguous hash with [E_AMBIGUOUS_ANCHOR] (synthetic collision)", async () => {
-		const file = "alpha\nbeta\ngamma\ndelta";
-		const realHashes = await lineHashes(file, home.testPath);
-		const forgedHashes = [...realHashes];
-		forgedHashes[2] = realHashes[0]!;
-
-		const sharedHash = realHashes[0]!;
-
+	it("stale-anchor error shows the file's current state for context", () => {
+		const file = ["const x = 1;", "const y = 2;", "const x = 1;"].join("\n");
 		let caught: Error | undefined;
 		try {
-			applyEdits(
-				file,
-        [
-          { hash_range_inclusive: [{ hash: sharedHash }, { hash: sharedHash }], content_lines: ["X"] },
-        ],
-        undefined,
-        forgedHashes,
-      );
-    } catch (error) {
-			caught = error as Error;
+			applyEdits(file, [
+        { hash_range_inclusive: [{ line: 1, hash: "ZZ" }, { line: 1, hash: "ZZ" }], content_lines: ["X"] },
+      ]);
+    } catch (e) {
+			caught = e as Error;
 		}
 		expect(caught).toBeDefined();
-		expect(caught!.message).toMatch(/E_AMBIGUOUS_ANCHOR/);
-		expect(caught!.message).toMatch(/matches lines 1, 3/);
-		expect(caught!.message).toContain(`${realHashes[0]!}│alpha`);
-		expect(caught!.message).toContain(`${realHashes[0]!}│gamma`);
+		expect(caught!.message).toMatch(/E_STALE_ANCHOR/);
+		expect(caught!.message).toContain("Call read()");
 	});
 
-	it("all hashes are unique for any file shape", async () => {
-		const files = [
-			"",
-			"\n",
-			"a",
-			"a\n",
-			"a\nb\nc",
-			"a\nb\nc\n",
-			"}\n}\n}\n}\n}",
-			"import x\nimport y\nimport x",
-			"a\n".repeat(1000),
-			Array.from({ length: 100 }, (_, i) => `line${i}`).join("\n"),
-		];
-		for (const file of files) {
-			const hashes = await lineHashes(file, home.testPath);
-			const unique = new Set(hashes);
-			expect(
-				unique.size,
-				`Failed for file with ${file.split("\n").length} lines`
-			).toBe(hashes.length);
-		}
-	});
-
-	it("hash array length matches line count for edge cases", async () => {
+	it("hash array length matches line count for edge cases", () => {
 		const cases = ["", "\n", "a", "a\n", "a\nb\nc\n"];
 		for (const file of cases) {
-			const hashes = await lineHashes(file, home.testPath);
+			const hashes = lineHashes(file);
 			expect(hashes).toHaveLength(file.split("\n").length);
 		}
 	});

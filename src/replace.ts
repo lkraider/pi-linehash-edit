@@ -42,17 +42,16 @@ import {
 } from "./replace-render";
 import { loadP, loadGuide } from "./prompts";
 import { saveUndo } from "./replace-undo";
-import { loadHashStore, type HashStore } from "./hash-store";
 
 const contentLinesSchema = Type.Array(Type.String(), {
   description:
-    "literal replacement file content, one string per line. Must not include the HASH│ prefix from read output.",
+    "literal replacement file content, one string per line. Must not include the line:hash│ prefix from read output.",
 });
 
 const hashRangeInclSchema = Type.Array(
-  Type.String({ description: "anchor (3-char HASH)" }),
+  Type.String({ description: "anchor (\"line:hash\", e.g. \"42:aB\")" }),
   {
-    description: "inclusive hash range to replace [start_hash, end_hash]. Each element must be the 3-character hash anchor only; do not include the │ separator or line content.",
+    description: "inclusive anchor range to replace [start, end]. Each element is a \"line:hash\" anchor copied verbatim from read output; do not include the │ separator or line content.",
     minItems: 2,
     maxItems: 2,
   },
@@ -153,8 +152,6 @@ export async function execPipeline(
   cwd: string,
   accessMode: number,
   signal?: AbortSignal,
-  store?: HashStore,
-  noPersist?: boolean,
 ): Promise<PipelineResult> {
 
   const path = params.path;
@@ -166,10 +163,8 @@ export async function execPipeline(
     throw new Error('[E_BAD_SHAPE] Edit request requires a non-empty "changes" array.');
   }
 
-  const hashStore = store ?? await loadHashStore();
-
-  const { normalized: originalNormalized, bom, originalEnding, fileHashes: originalHashes, hadUtf8DecodeErrors, absolutePath } = await readNormFile(
-    path, cwd, signal, accessMode, undefined, MAX_HASH_LINES, hashStore,
+  const { normalized: originalNormalized, bom, originalEnding, fileHashes: originalHashes, hadUtf8DecodeErrors } = await readNormFile(
+    path, cwd, signal, accessMode, undefined, MAX_HASH_LINES,
   );
 
   const resolved = resEdits(toolEdits);
@@ -182,25 +177,7 @@ export async function execPipeline(
   );
 
   const result = anchorResult.content;
-
-  const removedHashes = new Set<string>();
-  for (const edit of resolved) {
-    const startHash = edit.hash_range_inclusive[0].hash;
-    const endHash = edit.hash_range_inclusive[1].hash;
-    const startLine = originalHashes.indexOf(startHash);
-    const endLine = originalHashes.indexOf(endHash);
-    if (startLine >= 0 && endLine >= 0) {
-      for (let i = startLine; i <= endLine; i++) {
-        removedHashes.add(originalHashes[i]!);
-      }
-    }
-  }
-
-  const resultHashes = await lineHashes(result, absolutePath, {
-    content: originalNormalized,
-    hashes: originalHashes,
-    removedHashes,
-  }, hashStore, noPersist !== true);
+  const resultHashes = lineHashes(result);
 
   const warnings = [...(anchorResult.warnings ?? [])];
 
@@ -210,11 +187,7 @@ export async function execPipeline(
   for (let i = 0; i < resolved.length; i++) {
     if (noopIndices.has(i)) continue;
     const edit = resolved[i]!;
-    const startLine = originalHashes.indexOf(edit.hash_range_inclusive[0].hash);
-    const endLine = originalHashes.indexOf(edit.hash_range_inclusive[1].hash);
-    if (startLine >= 0 && endLine >= 0) {
-      totalRemovedLines += endLine - startLine + 1;
-    }
+    totalRemovedLines += edit.hash_range_inclusive[1].line - edit.hash_range_inclusive[0].line + 1;
     totalAddedLines += edit.content_lines.length;
   }
 
@@ -249,9 +222,6 @@ export async function compPreview(
       normalized,
       cwd,
       constants.R_OK,
-      undefined,
-      undefined,
-      true,
     );
 
     if (originalNormalized === result) {
@@ -291,26 +261,26 @@ const MODE_CFG = {
   flat: {
     desc: " Only one edit per call. The `hash_range_inclusive` and `content_lines` fields sit at the top level of the request object.",
     examples: [
-      "", "Single line:", "{ \"content_lines\": [\"const x = 1;\"], \"hash_range_inclusive\": [\"MQX\", \"MQX\"], \"path\": \"src/main.ts\" }", "", "Range replace:", "{ \"content_lines\": [\"function greet() {\", \"  return 1;\", \"}\"], \"hash_range_inclusive\": [\"ZPM\", \"VRW\"], \"path\": \"src/main.ts\" }",
+      "", "Single line:", "{ \"content_lines\": [\"const x = 1;\"], \"hash_range_inclusive\": [\"12:MQ\", \"12:MQ\"], \"path\": \"src/main.ts\" }", "", "Range replace:", "{ \"content_lines\": [\"function greet() {\", \"  return 1;\", \"}\"], \"hash_range_inclusive\": [\"5:ZP\", \"7:VR\"], \"path\": \"src/main.ts\" }",
     ].join("\n"),
     rules: "",
     requestStructure: [
-      "Flat mode:", "```json", "{ \"content_lines\": [...], \"hash_range_inclusive\": [\"aB3\", \"xY7\"], \"path\": \"...\" }", "```",
+      "Flat mode:", "```json", "{ \"content_lines\": [...], \"hash_range_inclusive\": [\"5:aB\", \"7:xY\"], \"path\": \"...\" }", "```",
     ].join("\n"),
     prefix: "one edit per call (flat mode)",
-    guidePrefix: "- Use `replace` with HASH anchors for all file changes. Only one edit per call.",
+    guidePrefix: "- Use `replace` with line:hash anchors for all file changes. Only one edit per call.",
   },
   bulk: {
     desc: "\n\nPut all operations on one file in a single `replace` call. Stack every region into the `changes` array, even when they are far apart. Anchors within one call must all come from the same pre-edit read; the runtime applies them atomically against that one snapshot.",
     examples: [
-      "", "Single line:", "{ \"changes\": [{ \"content_lines\": [\"const x = 1;\"], \"hash_range_inclusive\": [\"MQX\", \"MQX\"] }], \"path\": \"src/main.ts\" }", "", "Range replace:", "{ \"changes\": [{ \"content_lines\": [\"function greet() {\", \"  return 1;\", \"}\"], \"hash_range_inclusive\": [\"ZPM\", \"VRW\"] }], \"path\": \"src/main.ts\" }",
+      "", "Single line:", "{ \"changes\": [{ \"content_lines\": [\"const x = 1;\"], \"hash_range_inclusive\": [\"12:MQ\", \"12:MQ\"] }], \"path\": \"src/main.ts\" }", "", "Range replace:", "{ \"changes\": [{ \"content_lines\": [\"function greet() {\", \"  return 1;\", \"}\"], \"hash_range_inclusive\": [\"5:ZP\", \"7:VR\"] }], \"path\": \"src/main.ts\" }",
     ].join("\n"),
     rules: "- Multiple edits in one call must not overlap. Overlapping ranges are rejected with [E_EDIT_CONFLICT].",
     requestStructure: [
-      "Bulk mode (default):", "```json", "{ \"changes\": [{ \"content_lines\": [...], \"hash_range_inclusive\": [\"aB3\", \"xY7\"] }], \"path\": \"...\" }", "```",
+      "Bulk mode (default):", "```json", "{ \"changes\": [{ \"content_lines\": [...], \"hash_range_inclusive\": [\"5:aB\", \"7:xY\"] }], \"path\": \"...\" }", "```",
     ].join("\n"),
     prefix: "batching all changes to a file in one call",
-    guidePrefix: "- Use `replace` with HASH anchors for all file changes; batch every change to one file into a single `replace` call.",
+    guidePrefix: "- Use `replace` with line:hash anchors for all file changes; batch every change to one file into a single `replace` call.",
   },
 } as const;
 
@@ -512,7 +482,6 @@ export function buildToolDef(opts: { flat: boolean; autoRead?: boolean }): ToolD
           content: originalNormalized,
           bom,
           originalEnding,
-          hashes: originalHashes,
         });
         const updatedSnapshotId = (await fileSnap(absolutePath))
           .snapshotId;

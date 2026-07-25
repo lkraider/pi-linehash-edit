@@ -1,7 +1,6 @@
 import * as Diff from "diff";
 import {
-  _lineHashesPure,
-  ANCHOR_LEN,
+  lineHashes,
   HASH_SEP,
 } from "./hashline";
 
@@ -29,15 +28,20 @@ export function stripBOM(content: string): { bom: string; text: string } {
     : { bom: "", text: content };
 }
 
+function anchorAt(hashes: string[], line: number): string | undefined {
+  const hash = hashes[line - 1];
+  return hash === undefined ? undefined : `${line}:${hash}`;
+}
+
 function fmtDiffLine(
   prefix: " " | "+" | "-",
   line: string,
-  hash: string | undefined,
+  anchor: string | undefined,
 ): string {
-  if (hash === undefined) {
-    return `${prefix}${" ".repeat(ANCHOR_LEN)}${HASH_SEP}${line}`;
+  if (anchor === undefined) {
+    return `${prefix}${line}`;
   }
-  return `${prefix}${hash}${HASH_SEP}${line}`;
+  return `${prefix}${anchor}${HASH_SEP}${line}`;
 }
 
 export function genDiff(
@@ -47,7 +51,7 @@ export function genDiff(
   newContentHashes?: string[],
   _oldHashes?: string[],
 ): { diff: string; firstChangedLine: number | undefined } {
-  const effectiveNewHashes = newContentHashes ?? _lineHashesPure(newContent);
+  const effectiveNewHashes = newContentHashes ?? lineHashes(newContent);
 
   const parts = Diff.diffLines(oldContent, newContent);
   const output: string[] = [];
@@ -65,8 +69,7 @@ export function genDiff(
       if (firstChangedLine === undefined) firstChangedLine = newLineNum;
       for (let k = 0; k < displayLines.length; k++) {
         if (part.added) {
-          const hash = effectiveNewHashes[newLineNum - 1];
-          output.push(fmtDiffLine("+", displayLines[k]!, hash));
+          output.push(fmtDiffLine("+", displayLines[k]!, anchorAt(effectiveNewHashes, newLineNum)));
           newLineNum++;
         } else {
           output.push(fmtDiffLine("-", displayLines[k]!, undefined));
@@ -104,8 +107,7 @@ export function genDiff(
           newLineNum += skipMiddle;
           continue;
         }
-        const hash = effectiveNewHashes[newLineNum - 1];
-        output.push(fmtDiffLine(" ", line, hash));
+        output.push(fmtDiffLine(" ", line, anchorAt(effectiveNewHashes, newLineNum)));
         newLineNum++;
       }
     } else {

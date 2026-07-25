@@ -1,19 +1,16 @@
 # pi-hashline-edit-pro
 
-A [pi-coding-agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) extension that replaces the built-in `read` and `edit` tools with a hash-anchored line-replacing workflow. Strict semantics, no silent relocation, no autocorrection, no fuzzy fallback. Every line gets a unique content hash, so edits stay precise and stale anchors are caught before they reach the file.
+A [pi-coding-agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) extension that replaces the built-in `read` and `edit` tools with an anchored line-replacing workflow. Strict semantics, no silent relocation, no autocorrection, no fuzzy fallback. Every line is addressed by its own line number, verified by a content checksum, so edits stay precise and stale anchors are caught before they reach the file.
 
-Fork of [pi-hashline-edit](https://github.com/RimuruW/pi-hashline-edit) by RimuruW. The strict-semantics policy is unchanged. This fork extends the upstream design with 3-character hashes and collision resolution for unique per-line anchors.
+Fork of [pi-hashline-edit](https://github.com/RimuruW/pi-hashline-edit) by RimuruW. The strict-semantics policy is unchanged.
 
-Every line returned by `read` carries a short content hash. Edits reference those hashes instead of raw text, so the tool can detect stale context and reject outdated changes before they reach the file.
+Every line returned by `read` carries a `line:hash` anchor. Edits reference those anchors instead of raw text, so the tool can detect stale context and reject outdated changes before they reach the file.
 
-## Why fork?
+## Why line:hash?
 
-The original uses 2-character hashes of a 16-character alphabet, with the hash being a pure function of line content. That's 8 bits / 256 buckets, and two byte-identical lines (e.g. repeated `import` statements, repeated `}`) always share a hash because the hash is `xxHash32(content)`.
+A bare content hash (what upstream hashline implementations, including earlier versions of this fork, use as the sole anchor) asks a lossy, compressive function to serve as a permanent, collision-free identity for a line. That's a mismatch: two duplicate-content lines are indistinguishable by content alone, no matter how good the hash is, and a fixed-size hash space collides by the birthday bound long before any file gets large.
 
-This fork makes two changes that compound:
-
-1. **3-character hash length** over a 64-char URL-safe base64 alphabet (up from 2 characters in the upstream), expanding the hash space from 256 to 262,144 buckets.
-2. **Perfect hashing (collision resolution).** When computing hashes for a file, if a line's base hash collides with an already-assigned hash, the hash is incremented (using a retry counter: `:R{retry}`) until a unique hash is found. This ensures every line gets a unique anchor, even within a 3-character hash space. Two byte-identical lines (e.g. repeated `}` or repeated `import` statements) get different hashes automatically.
+Line number is already a perfect, free identifier: no two lines in one snapshot share a line number, ever, with zero collision handling. So the anchor is `line:hash` — position is the address, the hash is only a checksum that catches drift (has this specific line's content changed since it was last read). A mismatch at the stated line is always a stale anchor, never an identity crisis.
 
 ## Installation
 
@@ -33,7 +30,7 @@ pi install /path/to/pi-hashline-edit-pro
 
 ### `read` -- tagged line output
 
-Text files are returned with a `HASH│content` prefix on every line. The line number is not part of the wire format, only the 3-character hash followed by the `│` separator and the line content. Example output for the source below:
+Text files are returned with a `LINE:HASH│content` prefix on every line. Example output for the source below:
 
 ```js
 function hello() {
@@ -44,30 +41,31 @@ function hello() {
 would be returned as:
 
 ```text
-0qH│function hello() {
-szJ│  console.log("world");
-_zl│}
+1:0q│function hello() {
+2:sz│  console.log("world");
+3:_z│}
 ```
 
-- `HASH` is a 3-character content hash from the URL-safe base64 alphabet `A-Za-z0-9-_` (e.g. `aB3`). See [Hashing](#hashing) for details.
+- `LINE` is the 1-based line number.
+- `HASH` is a 2-character content checksum from the URL-safe base64 alphabet `A-Za-z0-9-_` (e.g. `aB`). See [Hashing](#hashing) for details.
 
 Optional parameters:
 
 - `offset` -- start reading from this line number (1-indexed).
 - `limit` -- maximum number of lines to return.
 
-Images (JPEG, PNG, GIF, WebP) are passed through as attachments and do not participate in the hashline protocol. Binary and directory paths are rejected with a descriptive error. Empty files are returned as a single empty-line hash (`HASH│`). Use replace on that hash to insert content.
+Images (JPEG, PNG, GIF, WebP) are passed through as attachments and do not participate in the hashline protocol. Binary and directory paths are rejected with a descriptive error. Empty files are returned as a single empty-line anchor (`1:HASH│`). Use replace on that anchor to insert content.
 
-### `replace` -- hash-anchored modifications
+### `replace` -- line:hash-anchored modifications
 
-Replaces using the `HASH│content` anchors from `read` output to target lines precisely. Two modes are available, toggled via `/toggle-replace-mode` (persists across sessions):
+Replaces using the `LINE:HASH│content` anchors from `read` output to target lines precisely. Two modes are available, toggled via `/toggle-replace-mode` (persists across sessions):
 
 **Bulk mode (default):** `hash_range_inclusive` and `content_lines` go inside a `changes` array, supporting multiple edits in one call.
 
 ```json
 {
   "changes": [
-    { "content_lines": ["  console.log('hashline');"], "hash_range_inclusive": ["ve7", "ve7"] }
+    { "content_lines": ["  console.log('hashline');"], "hash_range_inclusive": ["2:ve", "2:ve"] }
   ],
   "path": "src/main.ts"
 }
@@ -78,7 +76,7 @@ Replaces using the `HASH│content` anchors from `read` output to target lines p
 ```json
 {
   "content_lines": ["  console.log('hashline');"],
-  "hash_range_inclusive": ["ve7", "ve7"],
+  "hash_range_inclusive": ["2:ve", "2:ve"],
   "path": "src/main.ts"
 }
 ```
@@ -92,18 +90,18 @@ Replaces using the `HASH│content` anchors from `read` output to target lines p
 - **Legacy dialect rejected.** The native top-level `oldText`/`newText` (and `old_text`/`new_text`) dialect is rejected with `[E_LEGACY_SHAPE]`. The error message tells the model to call `read` first and send `{content_lines: [...], hash_range_inclusive: ["<START>", "<END>"]}`.
 - **Batched atomicity (bulk mode).** All edits in a single call validate against the same pre-edit snapshot and apply bottom-up, so the hashes from a single `read` call remain valid across all edits in the batch.
 
-### Stable hashing across edits
+### Stable anchors across edits
 
-Hashes are cached in an in-memory map (per resolved path, keyed by exact content match) for the life of the process. When you replace lines in a file, the runtime maps the old content against the new content and copies hashes for unchanged lines to their new positions. This means editing one part of a file does not change the hashes of unrelated lines elsewhere — the model can keep using previously seen anchors for untouched regions within a session.
+Anchors are computed fresh from disk on every `read` and `replace` call — there is no store, no cache, no cross-edit bookkeeping. Editing one part of a file never changes the anchor of an unrelated, untouched line: its line number is unchanged and its hash is a pure function of its own content, so it reproduces identically every time. Anchors from a `read` stay valid for every line you didn't touch, across any number of later edits, for free.
 
-There is no on-disk store. Stability only needs to hold within a session — a new process means a new conversation, and the model re-reads to get fresh anchors regardless.
+An anchor only goes stale when its specific line actually changed — content, position, or both. There is no proximity search and no fallback relocation: a mismatch at the stated line is always `[E_STALE_ANCHOR]`, telling the model to re-`read`.
 
 ### Chained edits
 
 After a successful replace, the response confirms with `Successfully replaced in {path}. Added X line(s), removed Y line(s).` (warnings are still shown if present). When auto-read is enabled, fresh anchors are appended automatically. Otherwise call `read` to get fresh anchors for follow-up edits.
 ### Auto-read after write and replace
 
-Auto-read is **disabled by default**. When enabled, after a successful `write` or `replace` the extension automatically reads the file and appends a `--- Auto-read (hashline anchors) ---` block to the result. This gives the model immediate `HASH│content` anchors for the file without requiring a separate `read` call. The workflow becomes:
+Auto-read is **disabled by default**. When enabled, after a successful `write` or `replace` the extension automatically reads the file and appends a `--- Auto-read (hashline anchors) ---` block to the result. This gives the model immediate `LINE:HASH│content` anchors for the file without requiring a separate `read` call. The workflow becomes:
 
 1. `write` a file, result includes hashline anchors
 2. `replace` using those anchors directly
@@ -138,29 +136,28 @@ The file is created automatically when any setting is toggled. Both fields are i
 
 ## Design Decisions
 
-- **Stale anchors fail (per-line).** A hash mismatch means that specific line's content changed since the last `read`; the error tells the model to call `read()` to get fresh anchors, then copy the 3-character HASH of the start and end of the range being replaced into `hash_range_inclusive` of the next replace call. Because staleness is per-line, editing or appending lines does **not** invalidate anchors for lines whose content is unchanged — anchors for untouched regions stay valid across edits to other regions.
-- **No fallback relocation.** Mismatched anchors are never silently relocated to a "close enough" line. This trades convenience for correctness.
-- **Strict patch content.** If `content_lines` contains `+HASH│` display prefixes (or `-N   ` numbered deletion rows), the edit is rejected with `[E_INVALID_PATCH]`. This narrowly guards against pasting the tool's own diff-preview rows back as content; standard unified-diff lines (`+x`, `-x`, ` x`, `@@ … @@`) are **not** rejected — they are written literally, since literal content must never be silently altered. Bare `HASH│` content (the first 4 chars of a `content_lines` entry looking like 3 base64 chars + `│`) is rejected with `[E_BARE_HASH_PREFIX]`. When the suspect's prefix happens to match a real file-line anchor, the error message flags that as strong evidence the model copied an anchor from the read output.
+- **Stale anchors fail (per-line).** An anchor mismatch means that specific line's content or position changed since the last `read`; the error tells the model to call `read()` to get fresh anchors, then copy the full `line:hash` anchor of the start and end of the range being replaced into `hash_range_inclusive` of the next replace call. Because staleness is per-line, editing or appending lines does **not** invalidate anchors for lines whose content and position are unchanged — anchors for untouched regions stay valid across edits to other regions.
+- **No fallback relocation.** Mismatched anchors are never silently relocated to a "close enough" line, and there is no proximity search. This trades convenience for correctness.
+- **Strict patch content.** If `content_lines` contains `+LINE:HASH│` display prefixes (or `-N   ` numbered deletion rows), the edit is rejected with `[E_INVALID_PATCH]`. This narrowly guards against pasting the tool's own diff-preview rows back as content; standard unified-diff lines (`+x`, `-x`, ` x`, `@@ … @@`) are **not** rejected — they are written literally, since literal content must never be silently altered. Content starting with a real, currently-valid `line:hash│` anchor is rejected with `[E_BARE_HASH_PREFIX]` — checked against the actual current anchor table, not just the shape of the prefix, so it only fires on genuine copy-paste of read output, never on coincidentally similar-looking content.
 - **Atomic writes.** Files are written via temp-file-then-rename to avoid corruption from interrupted writes. Symlink chains are resolved so the target file is updated without replacing the symlink. Hard-linked files are updated in place to preserve the shared inode. File permissions are preserved across atomic renames.
 - **Per-file mutation queue.** Edits queue by the canonical write target, so concurrent edits through different symlink paths still serialize onto the same underlying file.
 - **Boundary duplication auto-fix.** When the last line of a replacement matches the next surviving line (or the first line matches the preceding one), the runtime automatically strips the duplicate from `content_lines` before applying the edit. This catches a common LLM pattern where closing delimiters like `}`, `});`, or `} else {` are accidentally duplicated. The auto-fix is completely silent — the model sees a normal successful edit. The duplicate never reaches the file. Raw line comparison (not trimmed) avoids false positives when indentation differs.
 - **Flat mode normalization.** When flat mode is active, the tool's `execute` function wraps the top-level `hash_range_inclusive` and `content_lines` into a single-element `changes` array internally, then runs the same pipeline as bulk mode. The `normReq` function in `replace-normalize.ts` also handles flat format directly, so any code path that normalizes input (e.g. `compPreview`) works with both formats.
-- **In-memory hash cache.** `lineHashes` keeps a per-process `Map` (keyed by resolved path, valid on exact content match) to preserve hashes for unchanged lines across edits within a session. When called from the replace pipeline, it maps old vs new content and copies hashes for unchanged lines. When called from read, it returns cached hashes on a content match, otherwise computes fresh hashes via `_lineHashesPure`. No disk I/O, no cross-process persistence — a new process re-reads for fresh anchors. Per-operation work scales with the target file, not cumulative history.
+- **No hash store, no cache.** `lineHashes` is a pure, synchronous function of file content — no async init, no persistence, no per-edit bookkeeping to keep hashes "stable." Stability is a free consequence of addressing by line number and hashing content directly, not something that needs to be engineered.
+
 ## Hashing
 
-Hashes are computed with a synchronous 32-bit FNV-1a (`src/hashline/hasher.ts`, ~6 lines, zero dependencies), then mapped to a 3-character string from the URL-safe base64 alphabet `A-Za-z0-9-_`. That's 64 distinct characters, 6 bits per position, 18 bits of entropy per anchor.
+The raw hash is a synchronous 32-bit FNV-1a (`src/hashline/hasher.ts`, ~6 lines, zero dependencies) truncated to 2 characters from the URL-safe base64 alphabet `A-Za-z0-9-_` (12 bits, 4096 buckets). It is not asked to be globally unique — the line number is the address, the hash only verifies that the content at that address hasn't drifted since it was last read. That reframing is what lets the hash be small, non-cryptographic, and collision-tolerant: two different lines sharing a checksum is harmless, since they're never compared to each other, only to whatever the model claims is at one specific line.
 
-The alphabet is sized for an LLM consumer. The model tokenizes, it doesn't squint at pixel glyphs, so the human-readability heuristics used by smaller hand-curated alphabets (no G/L/I/O because they look like digits, no vowels so the hash doesn't accidentally spell a word, no hex digits so it can't be confused with `0xFF`) don't apply. The full 64 chars give maximum entropy per character, with case and digits included.
+The alphabet is sized for an LLM consumer. The model tokenizes, it doesn't squint at pixel glyphs, so the human-readability heuristics used by smaller hand-curated alphabets (no G/L/I/O because they look like digits, no vowels so the hash doesn't accidentally spell a word, no hex digits so it can't be confused with `0xFF`) don't apply.
 
 Before hashing, each line is normalized: carriage returns are stripped and trailing whitespace is trimmed. This `canon()` normalization prevents insignificant whitespace changes from cascade-triggering hash churn across the file. Two lines that differ only in trailing spaces or `\r` characters produce the same hash, so anchor stability is preserved across editor-save cycles that add or remove trailing whitespace.
 
-**Perfect hashing (collision resolution):** When computing hashes for a file, if a line's base hash collides with an already-assigned hash, the hash is incremented (using a retry counter: `:R{retry}`) until a unique hash is found. This ensures every line in a file gets a unique anchor, even with the shorter 3-character hash space. Two byte-identical lines (e.g. repeated `}` or repeated `import` statements) get different hashes automatically.
-The runtime always precomputes the full per-line hash array for a file via `lineHashes(content, path)`, then looks up by line number during validation and during `read` / `replace` response formatting. There is no per-line recomputation that could disagree with what the model saw in its last read. When `path` is provided, `lineHashes` uses a persistent store to preserve hashes for unchanged lines across edits — see [Stable hashing across edits](#stable-hashing-across-edits).
-`HASH_LEN` in `src/hashline/hash.ts` sets the hash body length; bump it to 4 if you need even more entropy without collision resolution.
+Two duplicate-content lines get the same hash — that's fine, because their line numbers differ, and it's the line number that's checked first. There is no collision retry, no "used hash" bookkeeping, and no hash-space exhaustion: `HASH_LEN` in `src/hashline/hash.ts` sets the checksum length and can be raised for a wider drift-detection margin, but nothing in the system depends on it for correctness.
 
 ### Bare-prefix detector
 
-With the `│` delimiter format, the bare-prefix detector regex `^\s*([A-Za-z0-9_\-]{3})│` is highly specific. It only matches lines starting with a hash-like prefix. This eliminates false positives from common code patterns like `init:`, `data:`, `else:`, etc. The detector rejects edit lines matching this pattern with `[E_BARE_HASH_PREFIX]` to prevent the model from accidentally pasting hash anchors into file content.
+The bare-prefix detector matches lines starting with a `line:hash│` shape, then checks that anchor against the file's actual current anchor table before rejecting anything. This means it only ever fires on genuine copy-paste of real read output — never on content that merely looks similar, since a coincidental match is checked against the real line and dismissed if it doesn't match. The detector rejects genuine matches with `[E_BARE_HASH_PREFIX]` to prevent the model from accidentally pasting an anchor into file content.
 
 ## Development
 

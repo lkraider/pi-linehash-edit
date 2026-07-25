@@ -1,10 +1,9 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { describe, expect, it } from "vitest";
 import { readFile } from "fs/promises";
 import { lineHashes } from "../../src/hashline";
 import { flatEditToolSchema, regReplaceFlat } from "../../src/replace";
 import { editToolSchema } from "../../src/replace";
-import { makeFakePiRegistry, withTempFile, useTestHome } from "../support/fixtures";
-const home = useTestHome();
+import { makeFakePiRegistry, withTempFile, anchorAt } from "../support/fixtures";
 
 describe("flatEditToolSchema", () => {
   it("has path, hash_range_inclusive, and content_lines at top level", () => {
@@ -49,13 +48,13 @@ describe("regReplaceFlat", () => {
       const { pi, getTool } = makeFakePiRegistry();
       regReplaceFlat(pi);
       const tool = getTool("replace");
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\n");
 
       const result = await tool.execute(
         "e1",
         {
           path: "sample.txt",
-          hash_range_inclusive: [hashes[1]!, hashes[1]!],
+          hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)],
           content_lines: ["BBB"],
         },
         undefined,
@@ -74,13 +73,13 @@ describe("regReplaceFlat", () => {
       const { pi, getTool } = makeFakePiRegistry();
       regReplaceFlat(pi);
       const tool = getTool("replace");
-      const hashes = await lineHashes("aaa\nbbb\nccc\nddd\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\nddd\n");
 
       const result = await tool.execute(
         "e1",
         {
           path: "sample.txt",
-          hash_range_inclusive: [hashes[1]!, hashes[2]!],
+          hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)],
           content_lines: ["BBB", "CCC"],
         },
         undefined,
@@ -99,13 +98,13 @@ describe("regReplaceFlat", () => {
       const { pi, getTool } = makeFakePiRegistry();
       regReplaceFlat(pi);
       const tool = getTool("replace");
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\n");
 
       const result = await tool.execute(
         "e1",
         {
           path: "sample.txt",
-          hash_range_inclusive: [hashes[1]!, hashes[1]!],
+          hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)],
           content_lines: [],
         },
         undefined,
@@ -124,13 +123,13 @@ describe("regReplaceFlat", () => {
       const { pi, getTool } = makeFakePiRegistry();
       regReplaceFlat(pi);
       const tool = getTool("replace");
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\n");
 
       const result = await tool.execute(
         "e1",
         {
           path: "sample.txt",
-          hash_range_inclusive: [hashes[1]!, hashes[1]!],
+          hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)],
           content_lines: ["bbb"],
         },
         undefined,
@@ -154,7 +153,7 @@ describe("regReplaceFlat", () => {
           "e1",
           {
             path: "sample.txt",
-            hash_range_inclusive: ["ZZZ", "ZZZ"],
+            hash_range_inclusive: ["1:ZZ", "1:ZZ"],
             content_lines: ["x"],
           },
           undefined,
@@ -170,14 +169,14 @@ describe("regReplaceFlat", () => {
       const { pi, getTool } = makeFakePiRegistry();
       regReplaceFlat(pi);
       const tool = getTool("replace");
-      const hashes = await lineHashes("aaa\nbbb\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\n");
 
       await expect(
         tool.execute(
           "e1",
           {
             path: "sample.txt",
-            hash_range_inclusive: [hashes[0]!, hashes[1]!],
+            hash_range_inclusive: [anchorAt(hashes, 1), anchorAt(hashes, 2)],
             content_lines: [],
           },
           undefined,
@@ -193,14 +192,14 @@ describe("regReplaceFlat", () => {
       const { pi, getTool } = makeFakePiRegistry();
       regReplaceFlat(pi);
       const tool = getTool("replace");
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\n");
 
       await expect(
         tool.execute(
           "e1",
           {
             path: "sample.txt",
-            hash_range_inclusive: [hashes[1]!, hashes[1]!],
+            hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)],
             content_lines: ["BBB"],
             unknown_field: "bad",
           } as any,
@@ -217,13 +216,13 @@ describe("regReplaceFlat", () => {
       const { pi, getTool } = makeFakePiRegistry();
       regReplaceFlat(pi);
       const tool = getTool("replace");
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\n");
 
       const result = await tool.execute(
         "e1",
         {
           path: "sample.txt",
-          hash_range_inclusive: [hashes[1]!, hashes[1]!],
+          hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)],
           content_lines: ["BBB"],
         },
         undefined,
@@ -241,13 +240,13 @@ describe("regReplaceFlat", () => {
       const { pi, getTool } = makeFakePiRegistry();
       regReplaceFlat(pi);
       const tool = getTool("replace");
-      const hashes = await lineHashes("alpha\nbeta\ngamma\n", home.testPath);
+      const hashes = await lineHashes("alpha\nbeta\ngamma\n");
 
       await tool.execute(
         "e1",
         {
           path: "crlf.txt",
-          hash_range_inclusive: [hashes[1]!, hashes[1]!],
+          hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)],
           content_lines: ["BETA"],
         },
         undefined,

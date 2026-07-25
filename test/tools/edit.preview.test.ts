@@ -1,17 +1,16 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { describe, expect, it } from "vitest";
 import { lineHashes } from "../../src/hashline";
 import { compPreview } from "../../src/replace";
-import { withTempFile, useTestHome } from "../support/fixtures";
+import { withTempFile, anchorAt } from "../support/fixtures";
 
-const home = useTestHome();
 
 describe("compPreview", () => {
   it("returns a diff for strict hashline edits before execution", async () => {
     await withTempFile("sample.ts", "aaa\nbbb\nccc\n", async ({ cwd }) => {
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\n");
 
       const preview = await compPreview(
-        { path: "sample.ts", changes: [{ hash_range_inclusive: [hashes[1]!, hashes[1]!], content_lines: ["BBB"] }] },
+        { path: "sample.ts", changes: [{ hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["BBB"] }] },
         cwd,
       );
       expect(preview).toHaveProperty("diff");
@@ -21,10 +20,10 @@ describe("compPreview", () => {
 
   it("returns a diff for a hash-anchored replace before execution", async () => {
     await withTempFile("sample.ts", "alpha\nbeta\ngamma\n", async ({ cwd }) => {
-      const hashes = await lineHashes("alpha\nbeta\ngamma\n", home.testPath);
+      const hashes = await lineHashes("alpha\nbeta\ngamma\n");
 
       const preview = await compPreview(
-        { path: "sample.ts", changes: [{ hash_range_inclusive: [hashes[1]!, hashes[1]!], content_lines: ["BETA"] }] },
+        { path: "sample.ts", changes: [{ hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["BETA"] }] },
         cwd,
       );
       expect(preview).toHaveProperty("diff");
@@ -34,10 +33,10 @@ describe("compPreview", () => {
 
   it("still computes a preview diff for read-only files", async () => {
     await withTempFile("sample.ts", "aaa\nbbb\nccc\n", async ({ cwd }) => {
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\n");
 
       const preview = await compPreview(
-        { path: "sample.ts", changes: [{ hash_range_inclusive: [hashes[1]!, hashes[1]!], content_lines: ["BBB"] }] },
+        { path: "sample.ts", changes: [{ hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["BBB"] }] },
         cwd,
       );
       expect(preview).toHaveProperty("diff");
@@ -46,10 +45,10 @@ describe("compPreview", () => {
 
   it("uses the shared text loader for preview instead of classifying then re-reading text", async () => {
     await withTempFile("sample.ts", "aaa\nbbb\nccc\n", async ({ cwd }) => {
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\n");
 
       const preview = await compPreview(
-        { path: "sample.ts", changes: [{ hash_range_inclusive: [hashes[1]!, hashes[1]!], content_lines: ["BBB"] }] },
+        { path: "sample.ts", changes: [{ hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["BBB"] }] },
         cwd,
       );
       expect(preview).toHaveProperty("diff");
@@ -58,10 +57,10 @@ describe("compPreview", () => {
 
   it("does not let a delayed preview resurrect after a settled result", async () => {
     await withTempFile("sample.ts", "aaa\nbbb\nccc\n", async ({ cwd }) => {
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\n");
 
       const preview = await compPreview(
-        { path: "sample.ts", changes: [{ hash_range_inclusive: [hashes[1]!, hashes[1]!], content_lines: ["BBB"] }] },
+        { path: "sample.ts", changes: [{ hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["BBB"] }] },
         cwd,
       );
       expect(preview).toHaveProperty("diff");

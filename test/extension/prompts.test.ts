@@ -9,7 +9,7 @@ const replacePrompt = readFileSync(
 
 describe("prompts/replace.md (model-facing contract)", () => {
   it("shows the end-to-end workflow with read", () => {
-    expect(replacePrompt).toMatch(/Replace lines in a text file using HASH anchors/);
+    expect(replacePrompt).toMatch(/Replace lines in a text file using LINE:HASH anchors/);
     expect(replacePrompt).toMatch(/hash_range_inclusive/);
   });
 
@@ -23,8 +23,8 @@ describe("prompts/replace.md (model-facing contract)", () => {
     expect(replacePrompt).toMatch(/hash_range_inclusive/i);
   });
 
-  it("tells the model not to include HASH or line content in anchors", () => {
-    expect(replacePrompt).toMatch(/Never include the HASH│ prefix/i);
+  it("tells the model not to include the anchor prefix in content_lines", () => {
+    expect(replacePrompt).toMatch(/Never include the LINE:HASH│ prefix/i);
   });
 
   it("documents line change summary after successful edit", () => {
@@ -48,9 +48,9 @@ const readPrompt = readFileSync(
 );
 
 describe("prompts/read.md (model-facing contract)", () => {
-  it("declares the HASH|content output format", () => {
-    expect(readPrompt).toMatch(/`HASH|content`/);
-    expect(readPrompt).toMatch(/3 characters/);
+  it("declares the LINE:HASH|content output format", () => {
+    expect(readPrompt).toMatch(/`LINE:HASH│content`/);
+    expect(readPrompt).toMatch(/2 characters/);
   });
 
   it("specifies the URL-safe base64 alphabet", () => {

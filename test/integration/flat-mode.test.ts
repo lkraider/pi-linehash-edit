@@ -1,9 +1,8 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { describe, expect, it } from "vitest";
 import { readFile } from "fs/promises";
 import { lineHashes } from "../../src/hashline";
-import { withTempFile, setupFlatIntegrationTest, useTestHome, getText, extractHash } from "../support/fixtures";
+import { withTempFile, setupFlatIntegrationTest, getText, extractHash, anchorAt } from "../support/fixtures";
 
-const home = useTestHome();
 
 describe("flat mode replace — end-to-end", () => {
   it("reads a file and replaces a single line via flat mode", async () => {
@@ -137,7 +136,7 @@ describe("flat mode replace — end-to-end", () => {
 
       const readResult = await readTool.execute("r1", { path: "empty.ts" }, undefined, undefined, ctx);
       const emptyHash = getText(readResult).split("\n")[0]!.split("│")[0]!;
-      expect(emptyHash).toMatch(/^[A-Za-z0-9_-]{3}$/);
+      expect(emptyHash).toMatch(/^\d+:[A-Za-z0-9_-]{2}$/);
 
       await editTool.execute(
         "e1",
@@ -187,13 +186,13 @@ describe("flat mode replace — end-to-end", () => {
   it("flat mode normalizes bulk changes array format via normReq", async () => {
     await withTempFile("sample.ts", "aaa\nbbb\nccc\n", async ({ cwd, path }) => {
       const { ctx, editTool } = setupFlatIntegrationTest(cwd);
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\n");
 
       const editResult = await editTool.execute(
         "e1",
         {
           path: "sample.ts",
-          changes: [{ hash_range_inclusive: [hashes[1]!, hashes[1]!], content_lines: ["BBB"] }],
+          changes: [{ hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["BBB"] }],
         },
         undefined,
         undefined,

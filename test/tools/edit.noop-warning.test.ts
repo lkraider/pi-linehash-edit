@@ -1,20 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { lineHashes } from "../../src/hashline";
-import { withTempFile, setupIntegrationTest, useTestHome } from "../support/fixtures";
+import { withTempFile, setupIntegrationTest, anchorAt } from "../support/fixtures";
 
-const home = useTestHome();
 
 describe("edit tool noop + warnings", () => {
   it("returns classification noop instead of throwing on identical content", async () => {
     await withTempFile("sample.ts", "aaa\nbbb\nccc\n", async ({ cwd }) => {
       const { ctx, editTool } = setupIntegrationTest(cwd);
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\n");
 
       const result = await editTool.execute(
         "e1",
         {
           path: "sample.ts",
-          changes: [{ hash_range_inclusive: [hashes[1]!, hashes[1]!], content_lines: ["bbb"] }],
+          changes: [{ hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["bbb"] }],
         },
         undefined,
         undefined,
@@ -27,13 +26,13 @@ describe("edit tool noop + warnings", () => {
   it("auto-fixes trailing duplicate silently, file is correct", async () => {
     await withTempFile("sample.ts", "aaa\nbbb\nccc\n", async ({ cwd, path }) => {
       const { ctx, editTool } = setupIntegrationTest(cwd);
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\n");
 
       await editTool.execute(
         "e1",
         {
           path: "sample.ts",
-          changes: [{ hash_range_inclusive: [hashes[1]!, hashes[1]!], content_lines: ["BBB", "ccc"] }],
+          changes: [{ hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["BBB", "ccc"] }],
         },
         undefined,
         undefined,

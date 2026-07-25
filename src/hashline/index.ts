@@ -1,14 +1,14 @@
 export {
 	HASH_LEN,
-	ANCHOR_LEN,
 	HASH_SEP,
 	HASH_CLASS,
-	HL_PREFIX_RE,
+	ANCHOR_CLASS,
+	ANCHOR_RE,
 	HL_PREFIX_PLUS_RE,
 	DIFF_MINUS_RE,
 	HL_BARE_PREFIX_RE,
+	lineHash,
 	lineHashes,
-	_lineHashesPure,
 } from "./hash";
 
 export {

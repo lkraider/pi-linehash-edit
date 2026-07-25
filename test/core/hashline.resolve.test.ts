@@ -8,7 +8,7 @@ import {
 describe("resEdits", () => {
 	it("resolves replace with hash_range_inclusive", () => {
 		const edits: HTEdit[] = [
-      { hash_range_inclusive: ["ZZP", "PPW"], content_lines: ["a", "b"] },
+      { hash_range_inclusive: ["1:ZZ", "2:PP"], content_lines: ["a", "b"] },
 		];
 		const resolved = resEdits(edits);
 		expect(resolved).toHaveLength(1);
@@ -18,7 +18,7 @@ describe("resEdits", () => {
 
 	it("resolves a 1-line replace (same anchor)", () => {
 		const edits: HTEdit[] = [
-      { hash_range_inclusive: ["MQX", "MQX"], content_lines: ["new"] },
+      { hash_range_inclusive: ["3:MQ", "3:MQ"], content_lines: ["new"] },
 		];
 		const resolved = resEdits(edits);
 		expect(resolved).toHaveLength(1);
@@ -26,8 +26,8 @@ describe("resEdits", () => {
 			hash_range_inclusive: [Anchor, Anchor];
       content_lines: string[];
 		};
-		expect(r.hash_range_inclusive[0].hash).toBe("MQX");
-		expect(r.hash_range_inclusive[1].hash).toBe("MQX");
+		expect(r.hash_range_inclusive[0]).toEqual({ line: 3, hash: "MQ" });
+		expect(r.hash_range_inclusive[1]).toEqual({ line: 3, hash: "MQ" });
 	});
 
 	it("throws on replace with no hash_range_inclusive (E_BAD_SHAPE)", () => {
@@ -45,7 +45,7 @@ describe("resEdits", () => {
   it("rejects string content_lines input", () => {
     const edits: HTEdit[] = [
       {
-        hash_range_inclusive: ["ZZP", "ZZP"],
+        hash_range_inclusive: ["1:ZZ", "1:ZZ"],
         content_lines: "hello\nworld\n",
       } as unknown as HTEdit,
     ];
@@ -57,7 +57,7 @@ describe("resEdits", () => {
   it("auto-recovers JSON-string content_lines", () => {
     const edits: HTEdit[] = [
       {
-        hash_range_inclusive: ["ZZP", "ZZP"],
+        hash_range_inclusive: ["1:ZZ", "1:ZZ"],
         content_lines: '["line1", "line2"]'
       } as unknown as HTEdit,
     ];
@@ -68,7 +68,7 @@ describe("resEdits", () => {
   it("rejects JSON-string content_lines that parses to non-array", () => {
     const edits: HTEdit[] = [
       {
-        hash_range_inclusive: ["ZZP", "ZZP"],
+        hash_range_inclusive: ["1:ZZ", "1:ZZ"],
         content_lines: '"just a string"'
       } as unknown as HTEdit,
     ];
@@ -80,7 +80,7 @@ describe("resEdits", () => {
 	it("rejects null content_lines input", () => {
 		const edits: HTEdit[] = [
 			{
-				hash_range_inclusive: ["ZZP", "ZZP"],
+				hash_range_inclusive: ["1:ZZ", "1:ZZ"],
         content_lines: null,
 			} as unknown as HTEdit,
 		];
@@ -90,14 +90,14 @@ describe("resEdits", () => {
 	});
 
 	it("rejects unknown fields", () => {
-    const edits = [{ hash_range_inclusive: ["ZZP", "ZZP"], content_lines: ["x"], extra: true }] as any;
+    const edits = [{ hash_range_inclusive: ["1:ZZ", "1:ZZ"], content_lines: ["x"], extra: true }] as any;
 		expect(() => resEdits(edits)).toThrow(
 			/unknown or unsupported fields/i,
 		);
 	});
 
 	it("rejects missing content_lines", () => {
-		const edits = [{ hash_range_inclusive: ["ZZP", "ZZP"] }] as any;
+		const edits = [{ hash_range_inclusive: ["1:ZZ", "1:ZZ"] }] as any;
 		expect(() => resEdits(edits)).toThrow(
       /requires a "content_lines" field/i,
 		);

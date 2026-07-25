@@ -2,7 +2,6 @@ import { readFile } from "fs/promises";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { loadHashStore, upsertSnapshot } from "./hash-store";
 import { resolveTarget, writeAtomic } from "./fs-write";
 import { toCwd } from "./paths";
 import { toLF, stripBOM, genDiff, restoreEndings } from "./replace-diff";
@@ -12,7 +11,6 @@ export interface UndoEntry {
   content: string;
   bom: string;
   originalEnding: "\r\n" | "\n";
-  hashes: string[];
 }
 
 const undoMap = new Map<string, UndoEntry>();
@@ -80,9 +78,6 @@ export function regReplaceUndo(pi: ExtensionAPI): void {
           mutationTargetPath,
           undo.bom + restoreEndings(undo.content, undo.originalEnding),
         );
-
-        const store = await loadHashStore();
-        upsertSnapshot(store, mutationTargetPath, undo.content, undo.hashes);
 
         clearUndo(mutationTargetPath);
 

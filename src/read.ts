@@ -56,17 +56,17 @@ export async function fmtReadPreview(
 	text: string,
 	options: { offset?: number; limit?: number },
 	precomputedHashes?: string[],
-	path?: string,
+	_path?: string,
 ): Promise<{ text: string; truncation?: TruncationResult; nextOffset?: number }> {
 	const allLines = visLines(text);
 	const totalLines = allLines.length;
 	const startLine = normPosInt(options.offset, "offset") ?? 1;
 	if (totalLines === 0) {
 		if (startLine === 1) {
-      const allHashes = precomputedHashes ?? await (path ? lineHashes(text, path) : lineHashes(text));
+      const allHashes = precomputedHashes ?? lineHashes(text);
       const emptyLineHash = allHashes[0] ?? "";
       return {
-				text: `${emptyLineHash}${HASH_SEP}\n[File is empty. Use replace to insert content.]`,
+				text: `1:${emptyLineHash}${HASH_SEP}\n[File is empty. Use replace to insert content.]`,
 			};
 		}
 		return {
@@ -84,9 +84,9 @@ export async function fmtReadPreview(
 		? Math.min(startLine - 1 + limit, totalLines)
 		: totalLines;
 	const selected = allLines.slice(startLine - 1, endIdx);
-	const allHashes = precomputedHashes ?? await (path ? lineHashes(text, path) : lineHashes(text));
+	const allHashes = precomputedHashes ?? lineHashes(text);
 	const selectedHashes = allHashes.slice(startLine - 1, endIdx);
-	const formatted = fmtRegion(selectedHashes, selected);
+	const formatted = fmtRegion(selectedHashes, selected, startLine);
 
 	const truncation = truncateHead(formatted);
 	if (truncation.firstLineExceedsLimit) {

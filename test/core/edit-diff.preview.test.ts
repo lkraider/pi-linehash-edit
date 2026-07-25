@@ -2,16 +2,16 @@ import { describe, expect, it } from "vitest";
 import { genDiff } from "../../src/replace-diff";
 
 describe("genDiff", () => {
-	it("adds hash hints for context and addition lines and pads deletion lines to align the '│' column", () => {
+	it("adds line:hash anchors for context and addition lines, and no anchor for deletion lines", () => {
 		const result = genDiff("alpha\nbeta\ngamma", "alpha\nBETA\ngamma");
 		const diff = result.diff;
-		expect(diff).toMatch(/^ [A-Za-z0-9_\-]{3}│alpha$/m);
-		expect(diff).toMatch(/^\+[A-Za-z0-9_\-]{3}│BETA$/m);
-		expect(diff).toMatch(/^- {3}│beta$/m);
-		expect(diff).toMatch(/^ [A-Za-z0-9_\-]{3}│gamma$/m);
+		expect(diff).toMatch(/^ \d+:[A-Za-z0-9_-]{2}│alpha$/m);
+		expect(diff).toMatch(/^\+\d+:[A-Za-z0-9_-]{2}│BETA$/m);
+		expect(diff).toMatch(/^-beta$/m);
+		expect(diff).toMatch(/^ \d+:[A-Za-z0-9_-]{2}│gamma$/m);
 	});
 
-	it("keeps the '│' column aligned across context, addition, and deletion lines", () => {
+	it("anchors context and addition lines with their correct line number", () => {
 
 		const before = [
 			"function greet(name) {",
@@ -26,19 +26,12 @@ describe("genDiff", () => {
 		].join("\n");
 
 		const { diff } = genDiff(before, after);
-
 		const lines = diff.split("\n");
 
-		const colonColumns = lines.map((line) => line.indexOf("│"));
-		expect(colonColumns).toEqual(lines.map(() => 4));
-
-		expect(lines).toContainEqual(expect.stringMatching(/^ [A-Za-z0-9_\-]{3}│function greet\(name\) \{$/));
-		expect(lines).toContainEqual(expect.stringMatching(/^- {3}│ {2}console\.log\('old'\)$/));
-		expect(lines).toContainEqual(expect.stringMatching(/^\+[A-Za-z0-9_\-]{3}│ {2}return `Hello, \$\{name\}`$/));
-		expect(lines).toContainEqual(expect.stringMatching(/^ [A-Za-z0-9_\-]{3}│\}$/));
-		expect(lines).toContainEqual(expect.stringMatching(/^- {3}│ {2}console\.log\('old'\)$/));
-		expect(lines).toContainEqual(expect.stringMatching(/^\+[A-Za-z0-9_\-]{3}│ {2}return `Hello, \$\{name\}`$/));
-		expect(lines).toContainEqual(expect.stringMatching(/^ [A-Za-z0-9_\-]{3}│\}$/));
+		expect(lines).toContainEqual(expect.stringMatching(/^ 1:[A-Za-z0-9_-]{2}│function greet\(name\) \{$/));
+		expect(lines).toContainEqual(expect.stringMatching(/^-\s{2}console\.log\('old'\)$/));
+		expect(lines).toContainEqual(expect.stringMatching(/^\+2:[A-Za-z0-9_-]{2}│ {2}return `Hello, \$\{name\}`$/));
+		expect(lines).toContainEqual(expect.stringMatching(/^ 3:[A-Za-z0-9_-]{2}│\}$/));
 	});
 	it("truncates context between two distant changes", () => {
 		const lines = [];

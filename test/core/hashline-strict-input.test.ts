@@ -1,20 +1,18 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
 	applyEdits,
 	lineHashes,
 	resEdits,
 	type HTEdit,
 } from "../../src/hashline";
-import { useTestHome } from "../support/fixtures";
-
-const home = useTestHome();
+import { anchorAt } from "../support/fixtures";
 
 describe("strict edit input (no autocorrection)", () => {
-	it("rejects bare HASH| prefix in content with E_BARE_HASH_PREFIX", async () => {
+	it("rejects a real line:hash| prefix in content with E_BARE_HASH_PREFIX", () => {
 		const file = "foo\nbar";
-		const hashes = await lineHashes(file, home.testPath);
+		const hashes = lineHashes(file);
 		const toolEdits: HTEdit[] = [
-      { hash_range_inclusive: [hashes[0]!, hashes[0]!], content_lines: [`${hashes[0]!}│foo`] },
+      { hash_range_inclusive: [anchorAt(hashes, 1), anchorAt(hashes, 1)], content_lines: [`${anchorAt(hashes, 1)}│foo`] },
     ];
     let caught: Error | undefined;
 		try {
@@ -24,14 +22,13 @@ describe("strict edit input (no autocorrection)", () => {
 		}
 		expect(caught).toBeDefined();
 		expect(caught!.message).toMatch(/^\[E_BARE_HASH_PREFIX\]/);
-		expect(caught!.message).toMatch(/match file line hashes/);
+		expect(caught!.message).toMatch(/real file-line anchor/);
 	});
 
 	it("rejects string content_lines before patch-prefix validation", () => {
-		const file = "foo\nbar";
 		const toolEdits: HTEdit[] = [
 			{
-        hash_range_inclusive: ["ZZZ", "ZZZ"], content_lines: `+ZZZ:foo`,
+        hash_range_inclusive: ["1:ZZ", "1:ZZ"], content_lines: `+1:ZZ:foo`,
       } as unknown as HTEdit,
     ];
     expect(() => resEdits(toolEdits)).toThrow(
@@ -40,17 +37,15 @@ describe("strict edit input (no autocorrection)", () => {
 	});
 
 	it("rejects diff deletion rows in array form", () => {
-		const file = "foo\nbar";
 		const toolEdits: HTEdit[] = [
-      { hash_range_inclusive: ["ZZZ", "ZZZ"], content_lines: ["-1    foo"] },
+      { hash_range_inclusive: ["1:ZZ", "1:ZZ"], content_lines: ["-1    foo"] },
     ];
     expect(() => resEdits(toolEdits)).toThrow(/^\[E_INVALID_PATCH\]/);
 	});
 
 	it("accepts plain literal content unchanged", () => {
-		const file = "foo\nbar";
 		const toolEdits: HTEdit[] = [
-      { hash_range_inclusive: ["ZZZ", "ZZZ"], content_lines: ["bar"] },
+      { hash_range_inclusive: ["1:ZZ", "1:ZZ"], content_lines: ["bar"] },
     ];
     const resolved = resEdits(toolEdits);
 		expect(resolved).toHaveLength(1);
@@ -58,81 +53,68 @@ describe("strict edit input (no autocorrection)", () => {
 	});
 
 	it("preserves '#' comment lines that do not match the strict prefix", () => {
-		const file = "foo\nbar";
 		const toolEdits: HTEdit[] = [
-      { hash_range_inclusive: ["ZZZ", "ZZZ"], content_lines: ["# keep me"] },
+      { hash_range_inclusive: ["1:ZZ", "1:ZZ"], content_lines: ["# keep me"] },
     ];
     const resolved = resEdits(toolEdits);
     expect(resolved[0]!.content_lines).toEqual(["# keep me"]);
 	});
 });
 
-describe("partial hash prefixes copied into content (issue #24)", () => {
+describe("bare-prefix false positives are impossible: only real anchors trigger it", () => {
 	const file = "alpha\nbeta\ngamma\ndelta";
 
 	function applyTool(toolEdits: HTEdit[], precomputedHashes?: string[]) {
 		return applyEdits(file, resEdits(toolEdits), undefined, precomputedHashes);
 	}
 
-	it("rejects with E_BARE_HASH_PREFIX when a bare prefix matches an existing file line hash", async () => {
-		const hashes = await lineHashes(file, home.testPath);
-		const anchor = hashes[0]!;
+	it("rejects when a content line's prefix is the real, current anchor of that exact line", () => {
+		const hashes = lineHashes(file);
+		const anchor = anchorAt(hashes, 1);
+		const betaAnchor = anchorAt(hashes, 2);
+		let caught: Error | undefined;
+		try {
+      applyTool([
+        { hash_range_inclusive: [anchor, anchor], content_lines: [`${betaAnchor}│### heading`, "real content"] },
+      ], hashes);
+    } catch (e) {
+      caught = e as Error;
+    }
+		expect(caught).toBeDefined();
+		expect(caught!.message).toMatch(/^\[E_BARE_HASH_PREFIX\]/);
+		expect(caught!.message).toContain(`${betaAnchor}│### heading`);
+	});
+
+	it("does NOT reject a line:hash-shaped prefix that doesn't match any real current anchor", () => {
+		const hashes = lineHashes(file);
+		const anchor = anchorAt(hashes, 1);
+		const result = applyTool([
+      { hash_range_inclusive: [anchor, anchor], content_lines: ["99:ZZ│one", "88:YY│two"] },
+    ], hashes);
+		expect(result.content).toContain("99:ZZ│one");
+		expect(result.content).toContain("88:YY│two");
+	});
+
+	it("does NOT reject a line:hash-shaped prefix with the right hash but the wrong line number", () => {
+		const hashes = lineHashes(file);
+		const anchor = anchorAt(hashes, 1);
 		const betaHash = hashes[1]!;
-		let caught: Error | undefined;
-		try {
-      applyTool([
-        { hash_range_inclusive: [anchor, anchor], content_lines: [`${betaHash}│### heading`, "real content"] },
-      ], hashes);
-    } catch (e) {
-      caught = e as Error;
-    }
-		expect(caught).toBeDefined();
-		expect(caught!.message).toMatch(/^\[E_BARE_HASH_PREFIX\]/);
-		expect(caught!.message).toContain(`${betaHash}│### heading`);
-		expect(caught!.message).toMatch(/match file line hashes/);
+		const result = applyTool([
+      { hash_range_inclusive: [anchor, anchor], content_lines: [`99:${betaHash}│not actually beta`] },
+    ], hashes);
+		expect(result.content).toContain(`99:${betaHash}│not actually beta`);
 	});
 
-	it("rejects valid literal 'HHHH:' content when HHHH exists in the file hash set", async () => {
-		const hashes = await lineHashes(file, home.testPath);
-		const anchor = hashes[0]!;
-		const gammaHash = hashes[2]!;
+	it("reports the edit index and content_lines index for each offending line", () => {
+		const hashes = lineHashes(file);
+		const anchor = anchorAt(hashes, 1);
+		const gammaAnchor = anchorAt(hashes, 3);
+		const deltaAnchor = anchorAt(hashes, 4);
 		let caught: Error | undefined;
 		try {
       applyTool([
-        { hash_range_inclusive: [anchor, anchor], content_lines: [`${gammaHash}│text`] },
-      ], hashes);
-    } catch (e) {
-      caught = e as Error;
-    }
-		expect(caught).toBeDefined();
-		expect(caught!.message).toMatch(/^\[E_BARE_HASH_PREFIX\]/);
-		expect(caught!.message).toContain(`${gammaHash}│text`);
-	});
-
-	it("rejects even when bare prefixes miss the file hash set (no 'strong signal' gate)", async () => {
-		const hashes = await lineHashes(file, home.testPath);
-		const anchor = hashes[0]!;
-		let caught: Error | undefined;
-		try {
-      applyTool([
-      { hash_range_inclusive: [anchor, anchor], content_lines: ["ZZZ│one", "ZZP│two"] },
-      ], hashes);
-    } catch (e) {
-      caught = e as Error;
-    }
-		expect(caught).toBeDefined();
-		expect(caught!.message).toMatch(/^\[E_BARE_HASH_PREFIX\]/);
-		expect(caught!.message).toMatch(/None match file line hashes/);
-	});
-
-	it("reports the edit index and content_lines index for each offending line", async () => {
-		const hashes = await lineHashes(file, home.testPath);
-		const anchor = hashes[0]!;
-		let caught: Error | undefined;
-		try {
-      applyTool([
-        { hash_range_inclusive: [anchor, anchor], content_lines: ["ZZZ│one"] },
-        { hash_range_inclusive: [anchor, anchor], content_lines: ["real", "ZZP│two"] },
+        { hash_range_inclusive: [anchor, anchor], content_lines: [`${gammaAnchor}│one`] },
+        { hash_range_inclusive: [anchor, anchor], content_lines: ["real", `${deltaAnchor}│two`] },
       ], hashes);
     } catch (e) {
       caught = e as Error;
@@ -142,9 +124,9 @@ describe("partial hash prefixes copied into content (issue #24)", () => {
     expect(caught!.message).toMatch(/edit 1, content_lines\[1\]/);
 	});
 
-	it("accepts a single legit 'TS: TypeScript' line without warning", async () => {
-		const hashes = await lineHashes(file, home.testPath);
-		const anchor = hashes[0]!;
+	it("accepts a single legit 'TS: TypeScript' line without warning", () => {
+		const hashes = lineHashes(file);
+		const anchor = anchorAt(hashes, 1);
 		const result = applyTool([
       { hash_range_inclusive: [anchor, anchor], content_lines: ["TS: TypeScript"] },
     ], hashes);
@@ -152,9 +134,9 @@ describe("partial hash prefixes copied into content (issue #24)", () => {
 		expect(result.content).toContain("TS: TypeScript");
 	});
 
-	it("does not false-positive on shorter valid-content prefixes like '#' or '+'", async () => {
-		const hashes = await lineHashes(file, home.testPath);
-		const anchor = hashes[0]!;
+	it("does not false-positive on shorter valid-content prefixes like '#' or '+'", () => {
+		const hashes = lineHashes(file);
+		const anchor = anchorAt(hashes, 1);
 		const result = applyTool([
       { hash_range_inclusive: [anchor, anchor], content_lines: ["# heading"] },
     ], hashes);

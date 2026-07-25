@@ -1,1 +1,1 @@
-Replace lines in a text file via HASH anchors from read, {{MODE_PREFIX}}
+Replace lines in a text file via line:hash anchors from read, {{MODE_PREFIX}}

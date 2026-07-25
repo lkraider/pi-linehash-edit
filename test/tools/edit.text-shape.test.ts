@@ -1,20 +1,19 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { describe, expect, it } from "vitest";
 import { lineHashes } from "../../src/hashline";
-import { withTempFile, setupIntegrationTest, useTestHome } from "../support/fixtures";
+import { withTempFile, setupIntegrationTest, anchorAt } from "../support/fixtures";
 
-const home = useTestHome();
 
 describe("edit tool text shape (token budget)", () => {
   it("changed mode keeps only anchors in LLM-visible text and line counts in details", async () => {
     await withTempFile("sample.ts", "aaa\nbbb\nccc\n", async ({ cwd }) => {
       const { ctx, editTool } = setupIntegrationTest(cwd);
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\n");
 
       const result = await editTool.execute(
         "e1",
         {
           path: "sample.ts",
-          changes: [{ hash_range_inclusive: [hashes[1]!, hashes[1]!], content_lines: ["BBB"] }],
+          changes: [{ hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["BBB"] }],
         },
         undefined,
         undefined,
@@ -30,13 +29,13 @@ describe("edit tool text shape (token budget)", () => {
   it("changed mode uses short anchor header without instructional clause", async () => {
     await withTempFile("sample.ts", "aaa\nbbb\nccc\n", async ({ cwd }) => {
       const { ctx, editTool } = setupIntegrationTest(cwd);
-      const hashes = await lineHashes("aaa\nbbb\nccc\n", home.testPath);
+      const hashes = await lineHashes("aaa\nbbb\nccc\n");
 
       const result = await editTool.execute(
         "e1",
         {
           path: "sample.ts",
-          changes: [{ hash_range_inclusive: [hashes[1]!, hashes[1]!], content_lines: ["BBB"] }],
+          changes: [{ hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["BBB"] }],
         },
         undefined,
         undefined,
@@ -50,14 +49,14 @@ describe("edit tool text shape (token budget)", () => {
   it("changed mode rejects deleting all content from a non-empty file", async () => {
     await withTempFile("sample.ts", "only\n", async ({ cwd }) => {
       const { ctx, editTool } = setupIntegrationTest(cwd);
-      const hashes = await lineHashes("only\n", home.testPath);
+      const hashes = await lineHashes("only\n");
 
       await expect(
         editTool.execute(
           "e1",
           {
             path: "sample.ts",
-            changes: [{ hash_range_inclusive: [hashes[0]!, hashes[0]!], content_lines: [] }],
+            changes: [{ hash_range_inclusive: [anchorAt(hashes, 1), anchorAt(hashes, 1)], content_lines: [] }],
           },
           undefined,
           undefined,
@@ -71,13 +70,13 @@ describe("edit tool text shape (token budget)", () => {
     const longLine = "x".repeat(5000);
     await withTempFile("sample.ts", `before\n${longLine}\nafter\n`, async ({ cwd }) => {
       const { ctx, editTool } = setupIntegrationTest(cwd);
-      const hashes = await lineHashes(`before\n${longLine}\nafter\n`, home.testPath);
+      const hashes = await lineHashes(`before\n${longLine}\nafter\n`);
 
       const result = await editTool.execute(
         "e1",
         {
           path: "sample.ts",
-          changes: [{ hash_range_inclusive: [hashes[1]!, hashes[1]!], content_lines: [`b${longLine.slice(1)}`] }],
+          changes: [{ hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: [`b${longLine.slice(1)}`] }],
         },
         undefined,
         undefined,

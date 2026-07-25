@@ -8,7 +8,6 @@ import { detectEnding, toLF, stripBOM } from "./replace-diff";
 import { abortIf } from "./utils";
 import { valKind, valAccess } from "./validation";
 import { visLines } from "./utils";
-import type { HashStore } from "./hash-store";
 export interface NormFile {
   absolutePath: string;
   normalized: string;
@@ -45,7 +44,6 @@ export async function readNormFile(
   accessMode: number = constants.R_OK,
   preloadedFile?: LFile,
   maxLines?: number,
-  store?: HashStore,
 ): Promise<NormFile> {
   const absolutePath = toCwd(path, cwd);
   const resolvedPath = await resolveTarget(absolutePath);
@@ -71,7 +69,7 @@ export async function readNormFile(
     }
   }
 
-  const fileHashes = await lineHashes(normalized, resolvedPath, undefined, store);
+  const fileHashes = lineHashes(normalized);
   return {
     absolutePath: resolvedPath,
     normalized,

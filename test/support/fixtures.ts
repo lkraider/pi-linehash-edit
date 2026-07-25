@@ -1,11 +1,9 @@
 import { mkdtemp, mkdir, rm, writeFile } from "fs/promises";
 import { join } from "path";
 import { beforeAll, afterAll, vi } from "vitest";
-import { _lineHashesPure } from "../../src/hashline";
 import { Compile } from "typebox/compile";
 import register from "../../index";
 import { regReplace, regReplaceFlat } from "../../src/replace";
-import { shutdownHashStore } from "../../src/hash-store";
 export async function getWritableTempRoot(): Promise<string> {
   const fallback = join(process.cwd(), ".tmp");
   await mkdir(fallback, { recursive: true });
@@ -63,7 +61,6 @@ export async function withTempFile(
     await writeFile(path, content, "utf-8");
     await run({ cwd, path });
   } finally {
-    shutdownHashStore();
     await rm(cwd, { recursive: true, force: true });
   }
 }
@@ -79,7 +76,6 @@ export async function withTempBytes(
     await writeFile(path, bytes);
     await run({ cwd, path });
   } finally {
-    shutdownHashStore();
     await rm(cwd, { recursive: true, force: true });
   }
 }
@@ -94,7 +90,6 @@ export async function withTempSubdir(
     await mkdir(path, { recursive: true });
     await run({ cwd, path });
   } finally {
-    shutdownHashStore();
     await rm(cwd, { recursive: true, force: true });
   }
 }
@@ -108,7 +103,6 @@ export async function withTempDir(
   try {
     await run(dir);
   } finally {
-    shutdownHashStore();
     await rm(dir, { recursive: true, force: true });
   }
 }
@@ -209,8 +203,12 @@ export function extractHash(line: string): string {
   return line.split("│")[0]!
 }
 
-export async function makeTag(content: string, line: number, path: string): Promise<{ hash: string }> {
+export function anchorAt(hashes: string[], line: number): string {
+  return `${line}:${hashes[line - 1]}`;
+}
+
+export async function makeTag(content: string, line: number, _path?: string): Promise<{ line: number; hash: string }> {
   const { lineHashes } = await import("../../src/hashline");
-  const hashes = await lineHashes(content, path);
-  return { hash: hashes[line - 1]! };
+  const hashes = lineHashes(content);
+  return { line, hash: hashes[line - 1]! };
 }

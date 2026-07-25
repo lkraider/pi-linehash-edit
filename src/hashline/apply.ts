@@ -1,5 +1,5 @@
 import { abortIf, visLines, lastNonEmptyIndex, firstNonEmptyIndex } from "../utils";
-import { _lineHashesPure, HASH_SEP } from "./hash";
+import { lineHashes, HASH_SEP } from "./hash";
 import {
 	valEdits,
 	assertNoBarePrefix,
@@ -83,7 +83,7 @@ function resToSpan(
   ) {
     noopEdits.push({
       editIndex: index,
-      loc: edit.hash_range_inclusive[0].hash,
+      loc: `${startLine}:${edit.hash_range_inclusive[0].hash}`,
       currentContent: originalLines.join("\n"),
     });
     return null;
@@ -242,7 +242,7 @@ export function fmtBoundaryWarning(params: {
 
 	const rows: string[] = [];
 	for (let i = winStart; i <= winEnd; i++) {
-		rows.push(`${params.resultHashes[i]}${HASH_SEP}${params.resultLines[i]}`);
+		rows.push(`${i + 1}:${params.resultHashes[i]}${HASH_SEP}${params.resultLines[i]}`);
 	}
 	return `${header}\n\n${rows.join("\n")}`;
 }
@@ -270,7 +270,7 @@ export function applyEdits(
 		};
 
 	const lineIndex = buildIdx(content);
-	const fileHashes = precomputedHashes ?? _lineHashesPure(content);
+	const fileHashes = precomputedHashes ?? lineHashes(content);
 	const noopEdits: NEdit[] = [];
 	const warnings: string[] = [];
 
@@ -355,6 +355,7 @@ export function applyEdits(
 export function fmtRegion(
 	hashes: string[],
 	lines: string[],
+	startLine = 1,
 ): string {
 	if (hashes.length !== lines.length) {
 		throw new Error(
@@ -362,7 +363,7 @@ export function fmtRegion(
 		);
 	}
 	return lines
-		.map((line, index) => `${hashes[index]}${HASH_SEP}${line}`)
+		.map((line, index) => `${startLine + index}:${hashes[index]}${HASH_SEP}${line}`)
 		.join("\n");
 }
 
