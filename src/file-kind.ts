@@ -75,7 +75,8 @@ export async function loadFileKindAndText(
     }
 
 
-    const decoder = new TextDecoder("utf-8");
+    // ignoreBOM keeps U+FEFF in the text so the edit pipeline can preserve it on write.
+    const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
     const fatalDecoder = new TextDecoder("utf-8", { fatal: true });
     let hadUtf8DecodeErrors = false;
     const noteUtf8Err = (chunk?: Uint8Array): void => {

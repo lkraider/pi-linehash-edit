@@ -133,7 +133,7 @@ describe("CRLF line ending preservation", () => {
 });
 
 describe("UTF-8 BOM handling", () => {
-  it("strips the BOM when reading and does not restore it on write", async () => {
+  it("preserves the BOM across an edit", async () => {
     await withTempFile("bom.ts", "alpha\nbeta\n", async ({ cwd, path }) => {
       const { readFile, writeFile } = await import("fs/promises");
       await writeFile(path, "\uFEFFalpha\nbeta\n", "utf-8");
@@ -155,8 +155,7 @@ describe("UTF-8 BOM handling", () => {
       );
 
       const content = await readFile(path, "utf-8");
-      expect(content).not.toContain("\uFEFF");
-      expect(content).toBe("alpha\nBETA\n");
+      expect(content).toBe("\uFEFFalpha\nBETA\n");
     });
   });
 });
