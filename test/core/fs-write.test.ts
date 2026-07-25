@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { resolveTarget, writeAtomic } from "../../src/fs-write";
-import { mkdtemp, writeFile, mkdir, rm, readFile, symlink } from "fs/promises";
+import { mkdtemp, writeFile, rm, readFile, symlink, realpath } from "fs/promises";
 import { join } from "path";
+
+async function mkResolvedTmp(): Promise<string> {
+  return realpath(await mkdtemp("/tmp/pi-hashline-resolve-"));
+}
 
 describe("resolveTarget", () => {
   it("resolves a simple path", async () => {
-    const dir = await mkdtemp("/tmp/pi-hashline-resolve-");
+    const dir = await mkResolvedTmp();
     try {
       const filePath = join(dir, "test.txt");
       await writeFile(filePath, "hello", "utf-8");
@@ -17,7 +21,7 @@ describe("resolveTarget", () => {
   });
 
   it("resolves a symlink to its target", async () => {
-    const dir = await mkdtemp("/tmp/pi-hashline-resolve-");
+    const dir = await mkResolvedTmp();
     try {
       const target = join(dir, "target.txt");
       const link = join(dir, "link.txt");
@@ -31,7 +35,7 @@ describe("resolveTarget", () => {
   });
 
   it("resolves a path through multiple symlink levels", async () => {
-    const dir = await mkdtemp("/tmp/pi-hashline-resolve-");
+    const dir = await mkResolvedTmp();
     try {
       const target = join(dir, "real.txt");
       const mid = join(dir, "mid.txt");
@@ -47,7 +51,7 @@ describe("resolveTarget", () => {
   });
 
   it("resolves a path with non-existent final component", async () => {
-    const dir = await mkdtemp("/tmp/pi-hashline-resolve-");
+    const dir = await mkResolvedTmp();
     try {
       const nonExistent = join(dir, "nonexistent", "file.txt");
       const resolved = await resolveTarget(nonExistent);
