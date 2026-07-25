@@ -52,20 +52,17 @@ export function formatPaginationHint(
 	return `[Showing lines ${startLine}-${endLine} of ${totalLines}${sizeSuffix}. Use offset=${nextOffset} to continue.]`;
 }
 
-export async function fmtReadPreview(
+function emptyOrOutOfRangeResult(
+	startLine: number,
+	totalLines: number,
 	text: string,
-	options: { offset?: number; limit?: number },
-	precomputedHashes?: string[],
-	_path?: string,
-): Promise<{ text: string; truncation?: TruncationResult; nextOffset?: number }> {
-	const allLines = visLines(text);
-	const totalLines = allLines.length;
-	const startLine = normPosInt(options.offset, "offset") ?? 1;
+	precomputedHashes: string[] | undefined,
+): { text: string } | null {
 	if (totalLines === 0) {
 		if (startLine === 1) {
-      const allHashes = precomputedHashes ?? lineHashes(text);
-      const emptyLineHash = allHashes[0] ?? "";
-      return {
+			const allHashes = precomputedHashes ?? lineHashes(text);
+			const emptyLineHash = allHashes[0] ?? "";
+			return {
 				text: `1:${emptyLineHash}${HASH_SEP}\n[File is empty. Use replace to insert content.]`,
 			};
 		}
@@ -78,6 +75,47 @@ export async function fmtReadPreview(
 			text: `Offset ${startLine} is beyond end of file (${totalLines} lines total). Use offset=1 to read from the start, or offset=${totalLines} to read the last line.`,
 		};
 	}
+	return null;
+}
+
+function appendPaginationHint(
+	preview: string,
+	startLine: number,
+	endIdx: number,
+	totalLines: number,
+	truncation: TruncationResult,
+): { preview: string; nextOffset: number | undefined } {
+	if (truncation.truncated) {
+		const endLineDisplay = startLine + truncation.outputLines - 1;
+		const nextOffset = endLineDisplay + 1;
+		const byteLimit = truncation.truncatedBy === "lines" ? undefined : truncation.maxBytes;
+		return {
+			preview: `${preview}\n\n${formatPaginationHint(startLine, endLineDisplay, totalLines, nextOffset, byteLimit)}`,
+			nextOffset,
+		};
+	}
+	if (endIdx < totalLines) {
+		const nextOffset = endIdx + 1;
+		return {
+			preview: `${preview}\n\n${formatPaginationHint(startLine, endIdx, totalLines, nextOffset)}`,
+			nextOffset,
+		};
+	}
+	return { preview, nextOffset: undefined };
+}
+
+export async function fmtReadPreview(
+	text: string,
+	options: { offset?: number; limit?: number },
+	precomputedHashes?: string[],
+	_path?: string,
+): Promise<{ text: string; truncation?: TruncationResult; nextOffset?: number }> {
+	const allLines = visLines(text);
+	const totalLines = allLines.length;
+	const startLine = normPosInt(options.offset, "offset") ?? 1;
+
+	const earlyResult = emptyOrOutOfRangeResult(startLine, totalLines, text, precomputedHashes);
+	if (earlyResult) return earlyResult;
 
 	const limit = normPosInt(options.limit, "limit");
 	const endIdx = limit
@@ -96,20 +134,13 @@ export async function fmtReadPreview(
 		};
 	}
 
-	let preview = truncation.content;
-	let nextOffset: number | undefined;
-	if (truncation.truncated) {
-		const endLineDisplay = startLine + truncation.outputLines - 1;
-		nextOffset = endLineDisplay + 1;
-		if (truncation.truncatedBy === "lines") {
-			preview += `\n\n${formatPaginationHint(startLine, endLineDisplay, totalLines, nextOffset)}`;
-		} else {
-			preview += `\n\n${formatPaginationHint(startLine, endLineDisplay, totalLines, nextOffset, truncation.maxBytes)}`;
-		}
-	} else if (endIdx < totalLines) {
-		nextOffset = endIdx + 1;
-		preview += `\n\n${formatPaginationHint(startLine, endIdx, totalLines, nextOffset)}`;
-	}
+	const { preview, nextOffset } = appendPaginationHint(
+		truncation.content,
+		startLine,
+		endIdx,
+		totalLines,
+		truncation,
+	);
 
 	return {
 		text: preview,
