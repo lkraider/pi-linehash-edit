@@ -3,14 +3,14 @@ import { join } from "path";
 import { beforeAll, afterAll, vi } from "vitest";
 import { Compile } from "typebox/compile";
 import register from "../../index";
-import { regReplace, regReplaceFlat } from "../../src/replace";
-export async function getWritableTempRoot(): Promise<string> {
+import { regReplaceFlat } from "../../src/replace";
+async function getWritableTempRoot(): Promise<string> {
   const fallback = join(process.cwd(), ".tmp");
   await mkdir(fallback, { recursive: true });
   return fallback;
 }
 
-export async function setupTestHome(): Promise<{
+async function setupTestHome(): Promise<{
   home: string;
   testPath: string;
   cleanup: () => Promise<void>;
@@ -152,20 +152,6 @@ export function makeFakePiRegistry() {
   };
 }
 
-export function makeFakeReplaceRegistry() {
-  const tools = new Map<string, any>();
-  const pi = {
-    registerTool(tool: any) {
-      tools.set(tool.name, tool);
-    },
-    on() {},
-  } as any;
-  regReplace(pi);
-  const tool = tools.get("replace");
-  if (!tool) throw new Error("Tool not registered: replace");
-  return { tool };
-}
-
 export function setupIntegrationTest(cwd: string) {
   const { pi, getTool } = makeFakePiRegistry();
   register(pi);
@@ -180,20 +166,6 @@ export function setupFlatIntegrationTest(cwd: string) {
   const ctx = { cwd, ui: { notify() {} } } as any;
   return { pi, getTool, ctx, readTool: getTool("read"), editTool: getTool("replace") };
 }
-
-export function setupEditTest(cwd: string) {
-  const { pi, getTool } = makeFakePiRegistry();
-  register(pi);
-  return { editTool: getTool("replace"), ctx: { cwd } as any };
-}
-
-export function setupReadTest(cwd: string) {
-  const { pi, getTool } = makeFakePiRegistry();
-  register(pi);
-  return { readTool: getTool("read"), ctx: { cwd } as any };
-}
-
-
 
 export function getText(result: { content: Array<{ text?: string }> }): string {
   return result.content[0]?.text ?? "";
