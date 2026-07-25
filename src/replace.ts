@@ -41,7 +41,6 @@ import {
   type RRState,
 } from "./replace-render";
 import { loadP, loadGuide } from "./prompts";
-import { saveUndo } from "./replace-undo";
 
 const contentLinesSchema = Type.Array(Type.String(), {
   description:
@@ -478,11 +477,6 @@ export function buildToolDef(opts: { flat: boolean; autoRead?: boolean }): ToolD
           absolutePath,
           bom + restoreEndings(result, originalEnding),
         );
-        saveUndo(mutationTargetPath, {
-          content: originalNormalized,
-          bom,
-          originalEnding,
-        });
         const updatedSnapshotId = (await fileSnap(absolutePath))
           .snapshotId;
 

@@ -1,2 +1,0 @@
-- After undoing, call `read` to get fresh anchors before retrying the replace.
-- Only the most recent replace per file is tracked — undoing twice without an intervening replace returns "no undo history".
