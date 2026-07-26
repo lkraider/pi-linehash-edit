@@ -1,11 +1,28 @@
 import { describe, expect, it } from "vitest";
 import { lineHashes } from "../../src/hashline";
+import { shouldSkipDiff } from "../../src/replace-diff";
 import { MAX_DIFF_LINES } from "../../src/constants";
 import { withTempFile, setupIntegrationTest, anchorAt } from "../support/fixtures";
 
 function manyLines(n: number): string {
   return Array.from({ length: n }, (_, i) => `line${i + 1}`).join("\n") + "\n";
 }
+
+describe("shouldSkipDiff", () => {
+  it("does not skip when both sides are exactly at MAX_DIFF_LINES", () => {
+    expect(shouldSkipDiff(MAX_DIFF_LINES, MAX_DIFF_LINES)).toBe(false);
+  });
+
+  it("skips when either side is one line over MAX_DIFF_LINES", () => {
+    expect(shouldSkipDiff(MAX_DIFF_LINES + 1, MAX_DIFF_LINES)).toBe(true);
+    expect(shouldSkipDiff(MAX_DIFF_LINES, MAX_DIFF_LINES + 1)).toBe(true);
+  });
+
+  it("does not skip for small files", () => {
+    expect(shouldSkipDiff(1, 1)).toBe(false);
+    expect(shouldSkipDiff(0, 0)).toBe(false);
+  });
+});
 
 describe("replace diff size-gate", () => {
   it("skips details.diff above MAX_DIFF_LINES while model-visible text is unchanged", async () => {
@@ -28,6 +45,8 @@ describe("replace diff size-gate", () => {
       expect(result.content[0].text).toContain("Successfully replaced");
       expect(result.content[0].text).toContain("Added 1 line(s), removed 1 line(s).");
       expect(result.details?.diff).toBe("");
+      expect(result.details?.firstChangedLine).toBe(2);
+      expect(result.details?.metrics?.changed_lines).toEqual({ first: 2, last: 2 });
     });
   });
 

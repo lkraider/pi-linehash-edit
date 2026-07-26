@@ -73,6 +73,28 @@ describe("file kind guards in tools", () => {
     });
   });
 
+  it("read rejects a binary (non-image) file with a descriptive error", async () => {
+    const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34, 0x00, 0x00, 0x00, 0x00]);
+    await withTempBytes("doc.pdf", bytes, async ({ cwd }) => {
+      const { ctx, readTool } = setupIntegrationTest(cwd);
+
+      await expect(
+        readTool.execute("r1", { path: "doc.pdf" }, undefined, undefined, ctx),
+      ).rejects.toThrow(/binary/i);
+    });
+  });
+
+  it("read rejects a directory with a descriptive error", async () => {
+    const { withTempSubdir } = await import("../support/fixtures");
+    await withTempSubdir("mydir2", async ({ cwd }) => {
+      const { ctx, readTool } = setupIntegrationTest(cwd);
+
+      await expect(
+        readTool.execute("r1", { path: "mydir2" }, undefined, undefined, ctx),
+      ).rejects.toThrow(/directory/i);
+    });
+  });
+
   it("edit rejects empty file deletion", async () => {
     await withTempFile("empty.txt", "a\n", async ({ cwd }) => {
       const { ctx, editTool } = setupIntegrationTest(cwd);

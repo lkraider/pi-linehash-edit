@@ -30,10 +30,8 @@ async function collectWindow(
   windowEnd: number,
   signal: AbortSignal | undefined,
 ): Promise<{ visibleLineCount: number; selectedLines: string[] }> {
-  const rl = createInterface({
-    input: createReadStream(absolutePath, { encoding: "utf8" }),
-    crlfDelay: Infinity,
-  });
+  const stream = createReadStream(absolutePath, { encoding: "utf8" });
+  const rl = createInterface({ input: stream, crlfDelay: Infinity });
 
   const selectedLines: string[] = [];
   let lineNo = 0;
@@ -49,6 +47,7 @@ async function collectWindow(
     }
   } finally {
     rl.close();
+    stream.destroy();
   }
 
   return { visibleLineCount: lineNo, selectedLines };

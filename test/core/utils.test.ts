@@ -97,21 +97,21 @@ describe("visLines", () => {
 
 
 describe("visLineCount", () => {
-  const CASES = [
-    "",
-    "a\nb\nc",
-    "a\nb\nc\n",
-    "hello",
-    "hello\n",
-    "\n",
-    "a\nb\n\n",
-    "a\n\nb",
-    "\n\n\n",
-  ];
+  function* newlineStrings(len: number): Generator<string> {
+    if (len === 0) {
+      yield "";
+      return;
+    }
+    for (const rest of newlineStrings(len - 1)) {
+      for (const ch of ["a", "\n"]) yield ch + rest;
+    }
+  }
 
-  it("matches visLines(text).length across a range of inputs", () => {
-    for (const text of CASES) {
-      expect(visLineCount(text)).toBe(visLines(text).length);
+  it("matches visLines(text).length on every string up to length 8 over {a, LF}", () => {
+    for (let len = 0; len <= 8; len++) {
+      for (const text of newlineStrings(len)) {
+        expect(visLineCount(text)).toBe(visLines(text).length);
+      }
     }
   });
 });

@@ -67,27 +67,32 @@ describe("stripBOM", () => {
   });
 });
 
-describe("analyzeEndings", () => {
-  const CASES = [
-    "",
-    "hello world",
-    "hello\r\nworld",
-    "hello\nworld",
-    "hello\rworld",
-    "line1\r\nline2\nline3",
-    "a\r\nb\rc\nd",
-    "a\r\rb",
-    "a\r\r\nb",
-    "\r",
-    "\r\n",
-    "\n",
-  ];
+function* endingStrings(len: number): Generator<string> {
+  if (len === 0) {
+    yield "";
+    return;
+  }
+  for (const rest of endingStrings(len - 1)) {
+    for (const ch of ["a", "\r", "\n"]) yield ch + rest;
+  }
+}
 
-  it("matches detectEnding + toLF on a range of endings, including single-scan hadMixedEndings detection", () => {
-    for (const content of CASES) {
-      const { normalized, originalEnding } = analyzeEndings(content);
-      expect(normalized).toBe(toLF(content));
-      expect(originalEnding).toBe(detectEnding(content));
+function oracleHadMixedEndings(content: string): boolean {
+  const hasCRLF = content.includes("\r\n");
+  const hasLoneLF = /(?<!\r)\n/.test(content);
+  const hasLoneCR = /\r(?!\n)/.test(content);
+  return (hasCRLF && hasLoneLF) || hasLoneCR;
+}
+
+describe("analyzeEndings", () => {
+  it("matches detectEnding/toLF/the original 3-scan hadMixedEndings formula on every string up to length 7 over {a, CR, LF}", () => {
+    for (let len = 0; len <= 7; len++) {
+      for (const content of endingStrings(len)) {
+        const { normalized, originalEnding, hadMixedEndings } = analyzeEndings(content);
+        expect(normalized).toBe(toLF(content));
+        expect(originalEnding).toBe(detectEnding(content));
+        expect(hadMixedEndings).toBe(oracleHadMixedEndings(content));
+      }
     }
   });
 
