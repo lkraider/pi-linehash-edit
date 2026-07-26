@@ -75,4 +75,14 @@ describe("streamed read matches whole-file read exactly", () => {
       expect(streamed.text).toBe(oracle.text);
     });
   });
+
+  it("treats a file containing only a BOM as empty, same as the whole-file path", async () => {
+    const content = "﻿";
+    await withTempFile("bomonly.txt", content, async ({ path }) => {
+      const oracle = await fmtReadPreview(normalize(content), {}, undefined, path);
+      const streamed = await fmtReadPreviewStreamed(path, {}, undefined);
+
+      expect(streamed.text).toBe(oracle.text);
+    });
+  });
 });
