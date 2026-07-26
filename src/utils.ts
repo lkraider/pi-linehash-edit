@@ -12,6 +12,15 @@ export function visLines(text: string): string[] {
   return text.endsWith("\n") ? lines.slice(0, -1) : lines;
 }
 
+export function visLineCount(text: string): number {
+  if (text.length === 0) return 0;
+  let count = 1;
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) === 10) count++;
+  }
+  return text.endsWith("\n") ? count - 1 : count;
+}
+
 
 export function rejectUnknownFields(
   obj: Record<string, unknown>,

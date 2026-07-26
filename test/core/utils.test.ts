@@ -3,6 +3,7 @@ import {
   isRec,
   has,
   visLines,
+  visLineCount,
   rejectUnknownFields,
   lastNonEmptyIndex,
   firstNonEmptyIndex,
@@ -94,6 +95,26 @@ describe("visLines", () => {
   });
 });
 
+
+describe("visLineCount", () => {
+  const CASES = [
+    "",
+    "a\nb\nc",
+    "a\nb\nc\n",
+    "hello",
+    "hello\n",
+    "\n",
+    "a\nb\n\n",
+    "a\n\nb",
+    "\n\n\n",
+  ];
+
+  it("matches visLines(text).length across a range of inputs", () => {
+    for (const text of CASES) {
+      expect(visLineCount(text)).toBe(visLines(text).length);
+    }
+  });
+});
 
 describe("rejectUnknownFields", () => {
   it("does not throw when all fields are allowed", () => {

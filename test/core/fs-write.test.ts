@@ -103,6 +103,21 @@ describe("writeAtomic", () => {
     }
   });
 
+  it("accepts a pre-resolved path and writes through it, skipping its own resolution", async () => {
+    const dir = await mkdtemp("/tmp/pi-hashline-write-");
+    try {
+      const target = join(dir, "target2.txt");
+      const link = join(dir, "link2.txt");
+      await writeFile(target, "original", "utf-8");
+      await symlink("target2.txt", link);
+      await writeAtomic(link, "via preresolved path", target);
+      const content = await readFile(target, "utf-8");
+      expect(content).toBe("via preresolved path");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("preserves file permissions on overwrite", async () => {
     const dir = await mkdtemp("/tmp/pi-hashline-write-");
     try {

@@ -153,6 +153,7 @@ export async function execPipeline(
   cwd: string,
   accessMode: number,
   signal?: AbortSignal,
+  resolvedAbsolutePath?: string,
 ): Promise<PipelineResult> {
 
   const path = params.path;
@@ -165,7 +166,7 @@ export async function execPipeline(
   }
 
   const { normalized: originalNormalized, bom, originalEnding, fileHashes: originalHashes, hadUtf8DecodeErrors, hadMixedEndings } = await readNormFile(
-    path, cwd, signal, accessMode, undefined, MAX_HASH_LINES,
+    path, cwd, signal, accessMode, undefined, MAX_HASH_LINES, resolvedAbsolutePath,
   );
 
   const resolved = parseEdits(toolEdits, hashDigitsFor(originalHashes.length));
@@ -461,6 +462,7 @@ export function buildToolDef(opts: { flat: boolean; autoRead?: boolean }): ToolD
           ctx.cwd,
           constants.R_OK | constants.W_OK,
           signal,
+          mutationTargetPath,
         );
 
         const editsAttempted = opts.flat
@@ -470,7 +472,7 @@ export function buildToolDef(opts: { flat: boolean; autoRead?: boolean }): ToolD
             : 0;
 
         if (originalNormalized === result) {
-          const noopSnapshotId = (await fileSnap(absolutePath)).snapshotId;
+          const noopSnapshotId = (await fileSnap(absolutePath, mutationTargetPath)).snapshotId;
           return buildNoop({
             path,
             noopEdits,
@@ -495,8 +497,9 @@ export function buildToolDef(opts: { flat: boolean; autoRead?: boolean }): ToolD
         await writeAtomic(
           absolutePath,
           bom + restoreEndings(result, originalEnding),
+          mutationTargetPath,
         );
-        const updatedSnapshotId = (await fileSnap(absolutePath))
+        const updatedSnapshotId = (await fileSnap(absolutePath, mutationTargetPath))
           .snapshotId;
 
         const editMeta: RMeta = {

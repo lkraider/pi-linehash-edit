@@ -34,6 +34,40 @@ export function stripBOM(content: string): { bom: string; text: string } {
     : { bom: "", text: content };
 }
 
+export interface EndingAnalysis {
+  normalized: string;
+  originalEnding: "\r\n" | "\n";
+  hadMixedEndings: boolean;
+}
+
+const LINE_BREAK_RE = /\r\n|\r|\n/g;
+
+export function analyzeEndings(rawContent: string): EndingAnalysis {
+  let originalEnding: "\r\n" | "\n" | undefined;
+  let sawCRLF = false;
+  let sawLoneLF = false;
+  let sawLoneCR = false;
+
+  const normalized = rawContent.replace(LINE_BREAK_RE, (match) => {
+    if (match === "\r\n") {
+      sawCRLF = true;
+      originalEnding ??= "\r\n";
+    } else if (match === "\n") {
+      sawLoneLF = true;
+      originalEnding ??= "\n";
+    } else {
+      sawLoneCR = true;
+    }
+    return "\n";
+  });
+
+  return {
+    normalized,
+    originalEnding: originalEnding ?? "\n",
+    hadMixedEndings: (sawCRLF && sawLoneLF) || sawLoneCR,
+  };
+}
+
 function anchorAt(hashes: string[], line: number): string | undefined {
   const hash = hashes[line - 1];
   return hash === undefined ? undefined : formatAnchor(line, hash);

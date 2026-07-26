@@ -73,6 +73,20 @@ describe("fileSnap", () => {
     });
   });
 
+  it("uses a pre-resolved path when provided, skipping its own resolution", async () => {
+    await withTempDir(async (dir) => {
+      const realFile = join(dir, "real2.ts");
+      const linkPath = join(dir, "link2.ts");
+      await writeFile(realFile, "real content\n", "utf-8");
+      await symlink(realFile, linkPath);
+
+      const viaResolution = await fileSnap(linkPath);
+      const viaPreresolved = await fileSnap(linkPath, realFile);
+
+      expect(viaPreresolved).toEqual(viaResolution);
+    });
+  });
+
   it("throws on non-existent file", async () => {
     await withTempDir(async (dir) => {
       const missingPath = join(dir, "does-not-exist.ts");

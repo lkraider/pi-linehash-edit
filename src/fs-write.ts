@@ -127,8 +127,9 @@ async function finalizeRename(
 export async function writeAtomic(
   path: string,
   content: string,
+  resolvedPath?: string,
 ): Promise<void> {
-  const targetPath = await resolveTarget(path);
+  const targetPath = resolvedPath ?? (await resolveTarget(path));
   const existingStats = await statOrNull(targetPath);
 
   if (existingStats && existingStats.nlink > 1) {

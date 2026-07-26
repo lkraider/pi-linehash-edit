@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectEnding, toLF, restoreEndings, stripBOM } from "../../src/replace-diff";
+import { detectEnding, toLF, restoreEndings, stripBOM, analyzeEndings } from "../../src/replace-diff";
 
 describe("detectEnding", () => {
   it("detects CRLF when \\r\\n appears first", () => {
@@ -64,6 +64,52 @@ describe("stripBOM", () => {
   it("handles plain empty string", () => {
     const result = stripBOM("");
     expect(result).toEqual({ bom: "", text: "" });
+  });
+});
+
+describe("analyzeEndings", () => {
+  const CASES = [
+    "",
+    "hello world",
+    "hello\r\nworld",
+    "hello\nworld",
+    "hello\rworld",
+    "line1\r\nline2\nline3",
+    "a\r\nb\rc\nd",
+    "a\r\rb",
+    "a\r\r\nb",
+    "\r",
+    "\r\n",
+    "\n",
+  ];
+
+  it("matches detectEnding + toLF on a range of endings, including single-scan hadMixedEndings detection", () => {
+    for (const content of CASES) {
+      const { normalized, originalEnding } = analyzeEndings(content);
+      expect(normalized).toBe(toLF(content));
+      expect(originalEnding).toBe(detectEnding(content));
+    }
+  });
+
+  it("flags mixed endings for CRLF plus a lone LF", () => {
+    expect(analyzeEndings("a\r\nb\nc").hadMixedEndings).toBe(true);
+  });
+
+  it("flags mixed endings for any lone CR", () => {
+    expect(analyzeEndings("a\rb\nc").hadMixedEndings).toBe(true);
+    expect(analyzeEndings("a\r\rb").hadMixedEndings).toBe(true);
+  });
+
+  it("does not flag uniform CRLF as mixed", () => {
+    expect(analyzeEndings("a\r\nb\r\nc\r\n").hadMixedEndings).toBe(false);
+  });
+
+  it("does not flag uniform LF as mixed", () => {
+    expect(analyzeEndings("a\nb\nc\n").hadMixedEndings).toBe(false);
+  });
+
+  it("does not flag single-line content with no endings as mixed", () => {
+    expect(analyzeEndings("hello world").hadMixedEndings).toBe(false);
   });
 });
 

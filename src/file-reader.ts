@@ -4,10 +4,9 @@ import { lineHashes } from "./hashline";
 import { loadFileKindAndText, type LFile } from "./file-kind";
 import { resolveTarget } from "./fs-write";
 import { toCwd } from "./paths";
-import { detectEnding, toLF, stripBOM } from "./replace-diff";
-import { abortIf } from "./utils";
+import { analyzeEndings, stripBOM } from "./replace-diff";
+import { abortIf, visLineCount } from "./utils";
 import { validateKind, validateAccess } from "./validation";
-import { visLines } from "./utils";
 export interface NormFile {
   absolutePath: string;
   normalized: string;
@@ -28,8 +27,8 @@ function fmtSnapId(canonicalPath: string, info: { mtimeMs: number; size: number 
   return `v1|${canonicalPath}|${info.mtimeMs}|${info.size}`;
 }
 
-export async function fileSnap(absolutePath: string): Promise<SnapInfo> {
-  const canonicalPath = await resolveTarget(absolutePath);
+export async function fileSnap(absolutePath: string, resolvedPath?: string): Promise<SnapInfo> {
+  const canonicalPath = resolvedPath ?? (await resolveTarget(absolutePath));
   const stats = await stat(canonicalPath);
   return {
     snapshotId: fmtSnapId(canonicalPath, stats),
@@ -45,9 +44,10 @@ export async function readNormFile(
   accessMode: number = constants.R_OK,
   preloadedFile?: LFile,
   maxLines?: number,
+  resolvedAbsolutePath?: string,
 ): Promise<NormFile> {
   const absolutePath = toCwd(path, cwd);
-  const resolvedPath = await resolveTarget(absolutePath);
+  const resolvedPath = resolvedAbsolutePath ?? (await resolveTarget(absolutePath));
 
   abortIf(signal);
   await validateAccess(resolvedPath, path, accessMode);
@@ -58,15 +58,10 @@ export async function readNormFile(
 
   abortIf(signal);
   const { bom, text: rawContent } = stripBOM(file.text);
-  const originalEnding = detectEnding(rawContent);
-  const hasCRLF = rawContent.includes("\r\n");
-  const hasLoneLF = /(?<!\r)\n/.test(rawContent);
-  const hasLoneCR = /\r(?!\n)/.test(rawContent);
-  const hadMixedEndings = (hasCRLF && hasLoneLF) || hasLoneCR;
-  const normalized = toLF(rawContent);
+  const { normalized, originalEnding, hadMixedEndings } = analyzeEndings(rawContent);
 
   if (maxLines !== undefined) {
-    const lineCount = visLines(normalized).length;
+    const lineCount = visLineCount(normalized);
     if (lineCount > maxLines) {
       throw new Error(
         `[E_FILE_TOO_LARGE] ${path} has ${lineCount} lines, exceeding the ${maxLines}-line edit limit. Hashline editing targets source-sized files; for very large files use write or a non-line-based approach.`,
