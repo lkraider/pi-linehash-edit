@@ -1,8 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { regReplace, regReplaceFlat } from "./src/replace";
 import { regRead, fmtReadPreview } from "./src/read";
-import { visLines } from "./src/utils";
-import { AUTO_READ_MAX } from "./src/constants";
+import { visLines, isRec } from "./src/utils";
+import { AUTO_READ_MAX, AUTO_READ_CONTEXT } from "./src/constants";
 import {
   readConfig,
   toggleReplaceMode,
@@ -20,6 +20,21 @@ function extractAutoReadPath(
 
   const filePath = (event.input as Record<string, unknown>)?.path;
   return typeof filePath === "string" ? filePath : undefined;
+}
+
+function autoReadWindow(details: unknown): { offset?: number; limit: number } {
+  if (!isRec(details) || typeof details.firstChangedLine !== "number") {
+    return { limit: AUTO_READ_MAX };
+  }
+  const first = details.firstChangedLine;
+  const metrics = isRec(details.metrics) ? details.metrics : undefined;
+  const changed = metrics && isRec(metrics.changed_lines) ? metrics.changed_lines : undefined;
+  const last = changed && typeof changed.last === "number" ? changed.last : first;
+  const span = Math.max(1, last - first + 1);
+  return {
+    offset: Math.max(1, first - AUTO_READ_CONTEXT),
+    limit: Math.min(AUTO_READ_MAX, span + AUTO_READ_CONTEXT * 2),
+  };
 }
 
 export default function (pi: ExtensionAPI): void {
@@ -81,7 +96,8 @@ function registerReplaceTool(pi: ExtensionAPI, mode: string, autoRead?: boolean)
 
       if (visLines(normalized).length === 0) return;
 
-      const preview = await fmtReadPreview(normalized, { limit: AUTO_READ_MAX }, fileHashes, absolutePath);
+      const window = autoReadWindow((event as { details?: unknown }).details);
+      const preview = await fmtReadPreview(normalized, window, fileHashes, absolutePath);
 
       return {
         content: [

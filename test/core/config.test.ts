@@ -54,27 +54,27 @@ describe("config — toggleReplaceMode", () => {
 });
 
 describe("config — toggleAutoRead", () => {
-  it("toggles from default false to true", async () => {
+  it("toggles from default true to false", async () => {
     await withTempHome(async () => {
-      expect(await toggleAutoRead()).toBe(true);
-      expect((await readConfig()).autoRead).toBe(true);
-    });
-  });
-
-  it("toggles from true back to false", async () => {
-    await withTempHome(async () => {
-      await writeConfig({ replaceMode: "bulk", autoRead: true });
       expect(await toggleAutoRead()).toBe(false);
       expect((await readConfig()).autoRead).toBe(false);
     });
   });
 
-  it("round-trips correctly through multiple toggles", async () => {
+  it("toggles from false back to true", async () => {
     await withTempHome(async () => {
-      expect(await toggleAutoRead()).toBe(true);
-      expect(await toggleAutoRead()).toBe(false);
+      await writeConfig({ replaceMode: "bulk", autoRead: false });
       expect(await toggleAutoRead()).toBe(true);
       expect((await readConfig()).autoRead).toBe(true);
+    });
+  });
+
+  it("round-trips correctly through multiple toggles", async () => {
+    await withTempHome(async () => {
+      expect(await toggleAutoRead()).toBe(false);
+      expect(await toggleAutoRead()).toBe(true);
+      expect(await toggleAutoRead()).toBe(false);
+      expect((await readConfig()).autoRead).toBe(false);
     });
   });
 });

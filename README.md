@@ -101,14 +101,14 @@ An anchor only goes stale when its specific line actually changed — content, p
 After a successful replace, the response confirms with `Successfully replaced in {path}. Added X line(s), removed Y line(s).` (warnings are still shown if present). When auto-read is enabled, fresh anchors are appended automatically. Otherwise call `read` to get fresh anchors for follow-up edits.
 ### Auto-read after write and replace
 
-Auto-read is **disabled by default**. When enabled, after a successful `write` or `replace` the extension automatically reads the file and appends a `--- Auto-read (hashline anchors) ---` block to the result. This gives the model immediate `LINE:HASH│content` anchors for the file without requiring a separate `read` call. The workflow becomes:
+Auto-read is **enabled by default**. After a successful `write` or `replace` the extension automatically reads the file and appends a `--- Auto-read (hashline anchors) ---` block to the result, giving the model immediate `LINE:HASH│content` anchors without a separate `read` call. The workflow becomes:
 
 1. `write` a file, result includes hashline anchors
 2. `replace` using those anchors directly
 
-Toggle at runtime with the `/toggle-auto-read` command. The setting persists across sessions in the config file (`~/.config/pi-linehash-edit/config.json`). Set `PI_HASHLINE_AUTO_READ=1` to enable by default on first run.
+After a `replace`, the appended block is **bounded to the changed region** (the edited lines plus surrounding context), not the whole file — chained edits near the last change get fresh anchors for free, while an edit elsewhere still uses `read`. A `write` has no single change point, so it returns a capped head read of the new file.
 
-For large files (>2000 lines), the auto-read output is truncated with a pagination hint. Use `read` with `offset` to see more.
+Toggle at runtime with the `/toggle-auto-read` command. The setting persists across sessions in the config file (`~/.config/pi-linehash-edit/config.json`). Set `PI_HASHLINE_AUTO_READ=1` to force it on regardless of saved config.
 
 ### Diff for the host
 
@@ -173,7 +173,7 @@ npm test
 
 Set `PI_HASHLINE_DEBUG=1` to show an "active" notification at session start.
 
-Set `PI_HASHLINE_AUTO_READ=1` to enable auto-read after write and replace by default on first run (can still be toggled at runtime with `/toggle-auto-read`; the setting persists across sessions once toggled).
+Auto-read after write and replace is on by default. Set `PI_HASHLINE_AUTO_READ=1` to force it on regardless of saved config; toggle at runtime with `/toggle-auto-read` (the setting persists across sessions once toggled).
 
 ## Credits
 

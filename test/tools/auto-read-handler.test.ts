@@ -76,6 +76,33 @@ describe("auto-read handler", () => {
     });
   });
 
+  it("bounds the auto-read window to the changed region on a replace result", async () => {
+    await withTempDir("auto-read-", async (dir) => {
+      const filePath = join(dir, "big.txt");
+      const lines = Array.from({ length: 200 }, (_, i) => `line ${i + 1}`);
+      await writeFile(filePath, lines.join("\n") + "\n", "utf-8");
+
+      const { pi, handlers } = makeFakePi();
+      register(pi);
+
+      const result = await handlers.get("tool_result")!(
+        {
+          toolName: "replace",
+          isError: false,
+          input: { path: "big.txt" },
+          content: [{ type: "text", text: "replaced" }],
+          details: { firstChangedLine: 50, metrics: { changed_lines: { first: 50, last: 50 } } },
+        },
+        { cwd: dir },
+      );
+
+      const text = (result as { content: Array<{ text: string }> }).content[1].text;
+      expect(text).toContain("│line 50");
+      expect(text).not.toContain("│line 1\n");
+      expect(text).not.toContain("│line 200");
+    });
+  });
+
   it("returns nothing when auto-read is disabled", async () => {
     delete process.env.PI_HASHLINE_AUTO_READ;
 

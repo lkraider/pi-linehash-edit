@@ -10,7 +10,7 @@ export interface Config {
 
 const DEFAULT_CONFIG: Config = {
   replaceMode: "bulk",
-  autoRead: false
+  autoRead: true
 };
 
 function parseConfig(content: string): Config {
