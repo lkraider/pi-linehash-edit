@@ -4,6 +4,11 @@ import {
   formatAnchor,
   HASH_SEP,
 } from "./hashline";
+import { MAX_DIFF_LINES } from "./constants";
+
+export function shouldSkipDiff(oldLines: number, newLines: number): boolean {
+  return oldLines > MAX_DIFF_LINES || newLines > MAX_DIFF_LINES;
+}
 
 export function detectEnding(content: string): "\r\n" | "\n" {
   const crlfIdx = content.indexOf("\r\n");

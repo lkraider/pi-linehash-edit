@@ -9,6 +9,7 @@ import { constants } from "fs";
 import {
   genDiff,
   restoreEndings,
+  shouldSkipDiff,
 } from "./replace-diff";
 import { readNormFile } from "./file-reader";
 import { normReq, normalizeFilePath, unwrapSingleChange, tryParseContentLines } from "./replace-normalize";
@@ -235,6 +236,9 @@ export async function compPreview(
       };
     }
 
+    if (shouldSkipDiff(originalHashes.length, resultHashes.length)) {
+      return { diff: "" };
+    }
     return { diff: genDiff(originalNormalized, result, 4, resultHashes, originalHashes).diff };
   } catch (error: unknown) {
     return { error: error instanceof Error ? error.message : String(error) };

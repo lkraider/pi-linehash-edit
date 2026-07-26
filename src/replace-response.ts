@@ -1,5 +1,5 @@
 import type { ReplaceDetails } from "./replace";
-import { genDiff } from "./replace-diff";
+import { genDiff, shouldSkipDiff } from "./replace-diff";
 import { visLines } from "./utils";
 
 type TResult = {
@@ -132,7 +132,9 @@ export function buildChanged(input: SuccessInput): TResult {
   const { path, result, warnings, snapshotId, originalNormalized, originalHashes, editMeta, resultHashes } = input;
 
   const resultLines = visLines(result);
-  const diffResult = genDiff(originalNormalized, result, 2, resultHashes, originalHashes);
+  const diffResult = shouldSkipDiff(originalHashes.length, resultHashes.length)
+    ? { diff: "", firstChangedLine: undefined }
+    : genDiff(originalNormalized, result, 2, resultHashes, originalHashes);
   const addedLines = editMeta.addedLines;
   const removedLines = editMeta.removedLines;
   const warningsBlock = warnBlock(warnings);
