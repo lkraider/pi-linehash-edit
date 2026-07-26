@@ -40,12 +40,12 @@ describe("strict hashline contract", () => {
 });
 
 describe("line:hash addressing", () => {
-	it("returns one hash per line, 2-char base64", () => {
+	it("returns one hash per line, 5-digit", () => {
 		const hashes = lineHashes("alpha\nbeta\ngamma");
 		expect(hashes).toHaveLength(3);
-		expect(hashes[0]).toMatch(/^[A-Za-z0-9_-]{2}$/);
-		expect(hashes[1]).toMatch(/^[A-Za-z0-9_-]{2}$/);
-		expect(hashes[2]).toMatch(/^[A-Za-z0-9_-]{2}$/);
+		expect(hashes[0]).toMatch(/^\d{5}$/);
+		expect(hashes[1]).toMatch(/^\d{5}$/);
+		expect(hashes[2]).toMatch(/^\d{5}$/);
 	});
 
 	it("gives identical content the same hash regardless of position", () => {

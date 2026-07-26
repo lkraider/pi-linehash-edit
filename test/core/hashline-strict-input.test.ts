@@ -5,7 +5,7 @@ import {
 	parseEdits,
 	type RawEdit,
 } from "../../src/hashline";
-import { anchorAt } from "../support/fixtures";
+import { anchorAt, fakeAnchor } from "../support/fixtures";
 
 describe("strict edit input (no autocorrection)", () => {
 	it("rejects a real line:hash| prefix in content with E_BARE_HASH_PREFIX", () => {
@@ -28,7 +28,7 @@ describe("strict edit input (no autocorrection)", () => {
 	it("rejects string content_lines before patch-prefix validation", () => {
 		const toolEdits: RawEdit[] = [
 			{
-        hash_range_inclusive: ["1:ZZ", "1:ZZ"], content_lines: `+1:ZZ:foo`,
+        hash_range_inclusive: [fakeAnchor(1), fakeAnchor(1)], content_lines: `+1:ZZ:foo`,
       } as unknown as RawEdit,
     ];
     expect(() => parseEdits(toolEdits)).toThrow(
@@ -38,14 +38,14 @@ describe("strict edit input (no autocorrection)", () => {
 
 	it("accepts column-aligned negative numbers literally (no shape-only rejection)", () => {
 		const toolEdits: RawEdit[] = [
-      { hash_range_inclusive: ["1:ZZ", "1:ZZ"], content_lines: ["-1    foo"] },
+      { hash_range_inclusive: [fakeAnchor(1), fakeAnchor(1)], content_lines: ["-1    foo"] },
     ];
     expect(parseEdits(toolEdits)[0]!.content_lines).toEqual(["-1    foo"]);
 	});
 
 	it("accepts plain literal content unchanged", () => {
 		const toolEdits: RawEdit[] = [
-      { hash_range_inclusive: ["1:ZZ", "1:ZZ"], content_lines: ["bar"] },
+      { hash_range_inclusive: [fakeAnchor(1), fakeAnchor(1)], content_lines: ["bar"] },
     ];
     const resolved = parseEdits(toolEdits);
 		expect(resolved).toHaveLength(1);
@@ -54,7 +54,7 @@ describe("strict edit input (no autocorrection)", () => {
 
 	it("preserves '#' comment lines that do not match the strict prefix", () => {
 		const toolEdits: RawEdit[] = [
-      { hash_range_inclusive: ["1:ZZ", "1:ZZ"], content_lines: ["# keep me"] },
+      { hash_range_inclusive: [fakeAnchor(1), fakeAnchor(1)], content_lines: ["# keep me"] },
     ];
     const resolved = parseEdits(toolEdits);
     expect(resolved[0]!.content_lines).toEqual(["# keep me"]);
@@ -107,24 +107,24 @@ describe("bare-prefix false positives are impossible: only real anchors trigger 
     ).toThrow(/E_BARE_HASH_PREFIX/);
 	});
 
-	it("does NOT reject a line:hash-shaped prefix that doesn't match any real current anchor", () => {
+	it("does NOT reject an anchor-shaped prefix that doesn't match any real current anchor", () => {
 		const hashes = lineHashes(file);
 		const anchor = anchorAt(hashes, 1);
 		const result = applyTool([
-      { hash_range_inclusive: [anchor, anchor], content_lines: ["99:ZZ│one", "88:YY│two"] },
+      { hash_range_inclusive: [anchor, anchor], content_lines: ["9900000│one", "8800000│two"] },
     ], hashes);
-		expect(result.content).toContain("99:ZZ│one");
-		expect(result.content).toContain("88:YY│two");
+		expect(result.content).toContain("9900000│one");
+		expect(result.content).toContain("8800000│two");
 	});
 
-	it("does NOT reject a line:hash-shaped prefix with the right hash but the wrong line number", () => {
+	it("does NOT reject an anchor-shaped prefix with the right hash but the wrong line number", () => {
 		const hashes = lineHashes(file);
 		const anchor = anchorAt(hashes, 1);
 		const betaHash = hashes[1]!;
 		const result = applyTool([
-      { hash_range_inclusive: [anchor, anchor], content_lines: [`99:${betaHash}│not actually beta`] },
+      { hash_range_inclusive: [anchor, anchor], content_lines: [`1${betaHash}│not actually beta`] },
     ], hashes);
-		expect(result.content).toContain(`99:${betaHash}│not actually beta`);
+		expect(result.content).toContain(`1${betaHash}│not actually beta`);
 	});
 
 	it("reports the edit index and content_lines index for each offending line", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { lineHashes, applyEdits, type ParsedEdit } from "../../src/hashline";
-import { withTempFile, setupIntegrationTest, getText, extractHash } from "../support/fixtures";
+import { withTempFile, setupIntegrationTest, getText, extractHash, anchorHash, anchorRowRe } from "../support/fixtures";
 
 describe("duplicate-content lines share a hash, disambiguated by line number", () => {
   it("two identical lines get the same hash", () => {
@@ -66,8 +66,8 @@ describe("end-to-end via tool: duplicate lines after an edit", () => {
 
       const braceLines = lines1.filter((l) => l.endsWith("│}"));
       expect(braceLines).toHaveLength(2);
-      const firstBraceHash = extractHash(braceLines[0]!).split(":")[1];
-      const secondBraceHash = extractHash(braceLines[1]!).split(":")[1];
+      const firstBraceHash = anchorHash(braceLines[0]!);
+      const secondBraceHash = anchorHash(braceLines[1]!);
       expect(firstBraceHash).toBe(secondBraceHash);
 
       const line1Hash = extractHash(lines1.find((l) => l.includes("│function a()"))!);
@@ -87,7 +87,7 @@ describe("end-to-end via tool: duplicate lines after an edit", () => {
       const lines2 = getText(read2).split("\n");
       const survivingBrace = lines2.find((l) => l.endsWith("│}"))!;
       expect(survivingBrace).toBeTruthy();
-      expect(extractHash(survivingBrace).split(":")[1]).toBe(secondBraceHash);
+      expect(anchorHash(survivingBrace)).toBe(secondBraceHash);
     });
   });
 
@@ -101,8 +101,8 @@ describe("end-to-end via tool: duplicate lines after an edit", () => {
 
       const bLines = lines1.filter((l) => l.endsWith("│b"));
       expect(bLines).toHaveLength(2);
-      const bHash = extractHash(bLines[0]!).split(":")[1];
-      expect(extractHash(bLines[1]!).split(":")[1]).toBe(bHash);
+      const bHash = anchorHash(bLines[0]!);
+      expect(anchorHash(bLines[1]!)).toBe(bHash);
 
       const aHash = extractHash(lines1.find((l) => l.endsWith("│a"))!);
       const cHash = extractHash(lines1.find((l) => l.endsWith("│c"))!);
@@ -122,8 +122,8 @@ describe("end-to-end via tool: duplicate lines after an edit", () => {
       const lines2 = getText(read2).split("\n");
       const survivingB = lines2.find((l) => l.endsWith("│b"))!;
       expect(survivingB).toBeTruthy();
-      expect(extractHash(survivingB).split(":")[1]).toBe(bHash);
-      expect(survivingB.startsWith("1:")).toBe(true);
+      expect(anchorHash(survivingB)).toBe(bHash);
+      expect(survivingB).toMatch(anchorRowRe("b", { line: 1 }));
     });
   });
 
@@ -137,9 +137,9 @@ describe("end-to-end via tool: duplicate lines after an edit", () => {
 
       const bLines = lines1.filter((l) => l.endsWith("│b"));
       expect(bLines).toHaveLength(3);
-      const bHash = extractHash(bLines[0]!).split(":")[1];
+      const bHash = anchorHash(bLines[0]!);
       for (const line of bLines) {
-        expect(extractHash(line).split(":")[1]).toBe(bHash);
+        expect(anchorHash(line)).toBe(bHash);
       }
 
       const aHash = extractHash(lines1.find((l) => l.endsWith("│a"))!);
@@ -166,7 +166,7 @@ describe("end-to-end via tool: duplicate lines after an edit", () => {
       const survivingBLines = lines2.filter((l) => l.endsWith("│b"));
       expect(survivingBLines).toHaveLength(2);
       for (const line of survivingBLines) {
-        expect(extractHash(line).split(":")[1]).toBe(bHash);
+        expect(anchorHash(line)).toBe(bHash);
       }
     });
   });

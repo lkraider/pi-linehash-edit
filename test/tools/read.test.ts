@@ -20,7 +20,7 @@ describe("fmtReadPreview", () => {
     expect(result.text).toContain("│alpha");
     expect(result.text).toContain("│beta");
     const lines = result.text.split("\n");
-    const emptyContentLines = lines.filter((l) => /^\d+:[A-Za-z0-9_-]{2}│$/.test(l));
+    const emptyContentLines = lines.filter((l) => /^\d+│$/.test(l));
     expect(emptyContentLines).toHaveLength(0);
   });
 
@@ -47,12 +47,12 @@ describe("fmtReadPreview", () => {
 describe("formatRegion", () => {
   it("formats lines as LINE:HASH|content rows, defaulting to line 1", () => {
     const result = formatRegion(["AB", "DE"], ["hello", "world"]);
-    expect(result).toBe("1:AB│hello\n2:DE│world");
+    expect(result).toBe("1AB│hello\n2DE│world");
   });
 
   it("offsets line numbers by the given startLine", () => {
     const result = formatRegion(["XY"], ["test"], 42);
-    expect(result).toBe("42:XY│test");
+    expect(result).toBe("42XY│test");
   });
 });
 });

@@ -11,8 +11,8 @@ describe("readNormFile", () => {
 			expect(result.bom).toBe("");
 			expect(result.originalEnding).toBe("\n");
 			expect(result.fileHashes).toHaveLength(2);
-			expect(result.fileHashes[0]).toMatch(/^[A-Za-z0-9_-]{2}$/);
-			expect(result.fileHashes[1]).toMatch(/^[A-Za-z0-9_-]{2}$/);
+			expect(result.fileHashes[0]).toMatch(/^\d{5}$/);
+			expect(result.fileHashes[1]).toMatch(/^\d{5}$/);
 			expect(result.hadUtf8DecodeErrors).toBe(false);
 		});
 	});

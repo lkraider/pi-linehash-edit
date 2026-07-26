@@ -4,13 +4,13 @@ A [pi-coding-agent](https://github.com/badlogic/pi-mono/tree/main/packages/codin
 
 Fork of [pi-hashline-edit](https://github.com/RimuruW/pi-hashline-edit) by RimuruW. The strict-semantics policy is unchanged.
 
-Every line returned by `read` carries a `line:hash` anchor. Edits reference those anchors instead of raw text, so the tool can detect stale context and reject outdated changes before they reach the file.
+Every line returned by `read` carries an anchor (line number plus a content checksum). Edits reference those anchors instead of raw text, so the tool can detect stale context and reject outdated changes before they reach the file.
 
-## Why line:hash?
+## Why line + checksum?
 
 A bare content hash (what upstream hashline implementations, including earlier versions of this fork, use as the sole anchor) asks a lossy, compressive function to serve as a permanent, collision-free identity for a line. That's a mismatch: two duplicate-content lines are indistinguishable by content alone, no matter how good the hash is, and a fixed-size hash space collides by the birthday bound long before any file gets large.
 
-Line number is already a perfect, free identifier: no two lines in one snapshot share a line number, ever, with zero collision handling. So the anchor is `line:hash` — position is the address, the hash is only a checksum that catches drift (has this specific line's content changed since it was last read). A mismatch at the stated line is always a stale anchor, never an identity crisis.
+Line number is already a perfect, free identifier: no two lines in one snapshot share a line number, ever, with zero collision handling. So the anchor is the line number immediately followed by a checksum — position is the address, the checksum only catches drift (has this specific line's content changed since it was last read). A mismatch at the stated line is always a stale anchor, never an identity crisis.
 
 ## Installation
 
@@ -30,7 +30,7 @@ pi install /path/to/pi-linehash-edit
 
 ### `read` -- tagged line output
 
-Text files are returned with a `LINE:HASH│content` prefix on every line. Example output for the source below:
+Text files are returned with an `<anchor>│content` prefix on every line. Example output for the source below:
 
 ```js
 function hello() {
@@ -41,31 +41,30 @@ function hello() {
 would be returned as:
 
 ```text
-1:0q│function hello() {
-2:sz│  console.log("world");
-3:_z│}
+176785│function hello() {
+241458│  console.log("world");
+388536│}
 ```
 
-- `LINE` is the 1-based line number.
-- `HASH` is a 2-character content checksum from the URL-safe base64 alphabet `A-Za-z0-9-_` (e.g. `aB`). See [Hashing](#hashing) for details.
+- The anchor is the 1-based line number immediately followed by a 5-digit content checksum, with no separator (`176785` is line 1, checksum `76785`). See [Hashing](#hashing) for details.
 
 Optional parameters:
 
 - `offset` -- start reading from this line number (1-indexed).
 - `limit` -- maximum number of lines to return.
 
-Images (JPEG, PNG, GIF, WebP) are passed through as attachments and do not participate in the hashline protocol. Binary and directory paths are rejected with a descriptive error. Empty files are returned as a single empty-line anchor (`1:HASH│`). Use replace on that anchor to insert content.
+Images (JPEG, PNG, GIF, WebP) are passed through as attachments and do not participate in the hashline protocol. Binary and directory paths are rejected with a descriptive error. Empty files are returned as a single empty-line anchor (e.g. `136261│`). Use replace on that anchor to insert content.
 
-### `replace` -- line:hash-anchored modifications
+### `replace` -- anchor-based modifications
 
-Replaces using the `LINE:HASH│content` anchors from `read` output to target lines precisely. Two modes are available, toggled via `/toggle-replace-mode` (persists across sessions):
+Replaces using the `<anchor>│content` anchors from `read` output to target lines precisely. Two modes are available, toggled via `/toggle-replace-mode` (persists across sessions):
 
 **Bulk mode (default):** `hash_range_inclusive` and `content_lines` go inside a `changes` array, supporting multiple edits in one call.
 
 ```json
 {
   "changes": [
-    { "content_lines": ["  console.log('hashline');"], "hash_range_inclusive": ["2:ve", "2:ve"] }
+    { "content_lines": ["  console.log('hashline');"], "hash_range_inclusive": ["274293", "274293"] }
   ],
   "path": "src/main.ts"
 }
@@ -76,7 +75,7 @@ Replaces using the `LINE:HASH│content` anchors from `read` output to target li
 ```json
 {
   "content_lines": ["  console.log('hashline');"],
-  "hash_range_inclusive": ["2:ve", "2:ve"],
+  "hash_range_inclusive": ["274293", "274293"],
   "path": "src/main.ts"
 }
 ```
@@ -101,7 +100,7 @@ An anchor only goes stale when its specific line actually changed — content, p
 After a successful replace, the response confirms with `Successfully replaced in {path}. Added X line(s), removed Y line(s).` (warnings are still shown if present). When auto-read is enabled, fresh anchors are appended automatically. Otherwise call `read` to get fresh anchors for follow-up edits.
 ### Auto-read after write and replace
 
-Auto-read is **enabled by default**. After a successful `write` or `replace` the extension automatically reads the file and appends a `--- Auto-read (hashline anchors) ---` block to the result, giving the model immediate `LINE:HASH│content` anchors without a separate `read` call. The workflow becomes:
+Auto-read is **enabled by default**. After a successful `write` or `replace` the extension automatically reads the file and appends a `--- Auto-read (hashline anchors) ---` block to the result, giving the model immediate `<anchor>│content` anchors without a separate `read` call. The workflow becomes:
 
 1. `write` a file, result includes hashline anchors
 2. `replace` using those anchors directly
@@ -128,7 +127,7 @@ Settings are stored in `~/.config/pi-linehash-edit/config.json`:
 ```json
 {
   "replaceMode": "bulk",
-  "autoRead": false
+  "autoRead": true
 }
 ```
 
@@ -136,9 +135,9 @@ The file is created automatically when any setting is toggled. Both fields are i
 
 ## Design Decisions
 
-- **Stale anchors fail (per-line).** An anchor mismatch means that specific line's content or position changed since the last `read`; the error tells the model to call `read()` to get fresh anchors, then copy the full `line:hash` anchor of the start and end of the range being replaced into `hash_range_inclusive` of the next replace call. Because staleness is per-line, editing or appending lines does **not** invalidate anchors for lines whose content and position are unchanged — anchors for untouched regions stay valid across edits to other regions.
+- **Stale anchors fail (per-line).** An anchor mismatch means that specific line's content or position changed since the last `read`; the error tells the model to call `read()` to get fresh anchors, then copy the full anchor of the start and end of the range being replaced into `hash_range_inclusive` of the next replace call. Because staleness is per-line, editing or appending lines does **not** invalidate anchors for lines whose content and position are unchanged — anchors for untouched regions stay valid across edits to other regions.
 - **No fallback relocation.** Mismatched anchors are never silently relocated to a "close enough" line, and there is no proximity search. This trades convenience for correctness.
-- **Strict patch content.** Copied-row detection is evidence-based, never shape-based. A `content_lines` entry starting with a `line:hash│` prefix (read row, diff context row, or diff `+` row) is rejected with `[E_BARE_HASH_PREFIX]` when that anchor matches the file's real current anchor table **and** either points inside the range being replaced (pasted rows of the edited region) or reproduces the referenced line verbatim after the `│` (rows copied from elsewhere — the move/duplicate signature). A live-anchor prefix outside the range whose content *differs* from the referenced line is likely a legitimate quote, so it applies with a `[W_BARE_HASH_PREFIX]` warning instead. Anchor-shaped prefixes that match nothing real, unified-diff lines (`+x`, `-x`, ` x`, `@@ … @@`), and column-aligned negative numbers are all written literally — literal content is never silently altered or blocked on shape alone.
+- **Strict patch content.** Copied-row detection is evidence-based, never shape-based. A `content_lines` entry starting with an `<anchor>│` prefix (read row, diff context row, or diff `+` row) is rejected with `[E_BARE_HASH_PREFIX]` when that anchor matches the file's real current anchor table **and** either points inside the range being replaced (pasted rows of the edited region) or reproduces the referenced line verbatim after the `│` (rows copied from elsewhere — the move/duplicate signature). A live-anchor prefix outside the range whose content *differs* from the referenced line is likely a legitimate quote, so it applies with a `[W_BARE_HASH_PREFIX]` warning instead. Anchor-shaped prefixes that match nothing real, unified-diff lines (`+x`, `-x`, ` x`, `@@ … @@`), and column-aligned negative numbers are all written literally — literal content is never silently altered or blocked on shape alone.
 - **Atomic writes.** Files are written via temp-file-then-rename to avoid corruption from interrupted writes. Symlink chains are resolved so the target file is updated without replacing the symlink. Hard-linked files are updated in place to preserve the shared inode. File permissions are preserved across atomic renames.
 - **Per-file mutation queue.** Edits queue by the canonical write target, so concurrent edits through different symlink paths still serialize onto the same underlying file.
 - **Boundary duplication warns, never auto-fixes.** When the last line of a replacement matches the next surviving line (or the first line matches the preceding one), the edit still applies exactly as submitted — content_lines is never altered — and a `[W_DUP]` warning is added to the response. This catches a common LLM pattern where closing delimiters like `}`, `});`, or `} else {` are accidentally duplicated, without risking the alternative failure mode: a duplicate that's coincidental rather than accidental (two unrelated `}` blocks at the same indent) silently mangled by a guess. Best-effort detection (exact, untrimmed line comparison), not enforcement — it can miss a duplicate that differs only in whitespace, and it never blocks the write.
@@ -148,7 +147,7 @@ The file is created automatically when any setting is toggled. Both fields are i
 
 ## Hashing
 
-The raw hash is a synchronous 32-bit FNV-1a (`src/hashline/hasher.ts`, ~6 lines, zero dependencies) truncated to 2 characters from the URL-safe base64 alphabet `A-Za-z0-9-_` (12 bits, 4096 buckets). It is not asked to be globally unique — the line number is the address, the hash only verifies that the content at that address hasn't drifted since it was last read. That reframing is what lets the hash be small, non-cryptographic, and collision-tolerant: two different lines sharing a checksum is harmless, since they're never compared to each other, only to whatever the model claims is at one specific line.
+The raw hash is a synchronous 32-bit FNV-1a (`src/hashline/hasher.ts`, ~6 lines, zero dependencies) reduced modulo 100000 to a fixed 5-digit decimal checksum (16.6 bits, 100000 buckets). It renders with no separator before the line number so both fold into a single token on OpenAI's o200k tokenizer (which chunks digit runs by 3), and 5 decimal digits are both cheaper per line and more drift-resistant than the previous 2-char base64 checksum. It is not asked to be globally unique — the line number is the address, the hash only verifies that the content at that address hasn't drifted since it was last read. That reframing is what lets the hash be small, non-cryptographic, and collision-tolerant: two different lines sharing a checksum is harmless, since they're never compared to each other, only to whatever the model claims is at one specific line.
 
 The alphabet is sized for an LLM consumer. The model tokenizes, it doesn't squint at pixel glyphs, so the human-readability heuristics used by smaller hand-curated alphabets (no G/L/I/O because they look like digits, no vowels so the hash doesn't accidentally spell a word, no hex digits so it can't be confused with `0xFF`) don't apply.
 
@@ -160,7 +159,7 @@ Anchors are best-effort drift detection, not a freshness proof. Two external cha
 
 ### Bare-prefix detector
 
-The bare-prefix detector matches lines starting with a `line:hash│` shape (with an optional leading `+`, covering diff rows), then demands evidence before hard-rejecting. The anchor must match the file's actual current anchor table, and then one of two copy signatures must hold: the anchor points inside the range being replaced (read/diff rows of the edited region pasted back), or the content after `│` reproduces the referenced line verbatim (rows copied from elsewhere in the file — the move/duplicate mistake). A live-anchor prefix that matches neither signature — same anchor, different content — reads as a deliberate quote of another line, so it applies with a `[W_BARE_HASH_PREFIX]` warning instead of blocking. Content that merely looks anchor-shaped but matches nothing real is always written literally.
+The bare-prefix detector matches lines starting with an `<anchor>│` shape (digits, with an optional leading `+`, covering diff rows), then demands evidence before hard-rejecting. The anchor must match the file's actual current anchor table, and then one of two copy signatures must hold: the anchor points inside the range being replaced (read/diff rows of the edited region pasted back), or the content after `│` reproduces the referenced line verbatim (rows copied from elsewhere in the file — the move/duplicate mistake). A live-anchor prefix that matches neither signature — same anchor, different content — reads as a deliberate quote of another line, so it applies with a `[W_BARE_HASH_PREFIX]` warning instead of blocking. Content that merely looks anchor-shaped but matches nothing real is always written literally.
 
 ## Development
 

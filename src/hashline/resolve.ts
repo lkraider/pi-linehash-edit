@@ -62,17 +62,17 @@ export function formatMismatch(
 ): string {
   assertAligned(fileLines, fileHashes, "formatMismatch");
 
-  const refList = mismatches.map((m) => `"${m.ref.line}:${m.ref.hash}"`).join(", ");
+  const refList = mismatches.map((m) => `"${m.ref.line}${m.ref.hash}"`).join(", ");
   const detail = mismatches
     .map((m) => {
       if (m.ref.line < 1 || m.ref.line > fileLines.length) {
-        return `  ${m.ref.line}:${m.ref.hash} — line ${m.ref.line} does not exist (file has ${fileLines.length} line(s)).`;
+        return `  ${m.ref.line}${m.ref.hash} — line ${m.ref.line} does not exist (file has ${fileLines.length} line(s)).`;
       }
-      return `  ${m.ref.line}:${m.ref.hash} — line ${m.ref.line} is now ${fileHashes[m.ref.line - 1]}:${JSON.stringify(fileLines[m.ref.line - 1])}.`;
+      return `  ${m.ref.line}${m.ref.hash} — line ${m.ref.line} is now ${m.ref.line}${fileHashes[m.ref.line - 1]} = ${JSON.stringify(fileLines[m.ref.line - 1])}.`;
     })
     .join("\n");
 
-  return `[E_STALE_ANCHOR] ${mismatches.length} stale anchor${mismatches.length > 1 ? "s" : ""}${filePath ? ` in ${filePath}` : ""}: ${refList}. The file content or line position has changed since those anchors were read. Call read() to get fresh anchors, then copy the "line:hash" anchor of the start and end of the range you are replacing into hash_range_inclusive of your next replace call.\n${detail}`;
+  return `[E_STALE_ANCHOR] ${mismatches.length} stale anchor${mismatches.length > 1 ? "s" : ""}${filePath ? ` in ${filePath}` : ""}: ${refList}. The file content or line position has changed since those anchors were read. Call read() to get fresh anchors, then copy the anchor of the start and end of the range you are replacing into hash_range_inclusive of your next replace call.\n${detail}`;
 }
 
 const ITEM_KS = new Set(["content_lines", "hash_range_inclusive"]);
@@ -255,7 +255,7 @@ export function resolveEdits(
 		}
 		if (startResolved.line > endResolved.line) {
 			throw new Error(
-				`[E_BAD_OP] Range start line ${startResolved.line} must be <= end line ${endResolved.line} (anchors ${startResolved.line}:${startResolved.hash} and ${endResolved.line}:${endResolved.hash}).`,
+				`[E_BAD_OP] Range start line ${startResolved.line} must be <= end line ${endResolved.line} (anchors ${startResolved.line}${startResolved.hash} and ${endResolved.line}${endResolved.hash}).`,
 			);
 		}
 		const endLine = endResolved.line;

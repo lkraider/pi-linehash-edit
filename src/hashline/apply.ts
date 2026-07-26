@@ -54,7 +54,7 @@ function editToSpan(
   ) {
     noopEdits.push({
       editIndex: index,
-      loc: `${startLine}:${edit.hash_range_inclusive[0].hash}`,
+      loc: `${startLine}${edit.hash_range_inclusive[0].hash}`,
       currentContent: originalLines.join("\n"),
     });
     return null;
@@ -213,7 +213,7 @@ export function formatRegion(
 		);
 	}
 	return lines
-		.map((line, index) => `${startLine + index}:${hashes[index]}${HASH_SEP}${line}`)
+		.map((line, index) => `${startLine + index}${hashes[index]}${HASH_SEP}${line}`)
 		.join("\n");
 }
 

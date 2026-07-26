@@ -7,14 +7,14 @@ function diagRef(ref: string): string {
 	const trimmed = ref.trim();
 
 	if (!trimmed.length) {
-		return `[E_BAD_REF] Invalid anchor. Expected "line:hash" from the most recent read (e.g. "42:aB").`;
+		return `[E_BAD_REF] Invalid anchor. Expected an anchor copied verbatim from the most recent read (e.g. "4274293").`;
 	}
 
 	if (trimmed.includes("│")) {
-		return `[E_BAD_REF] Invalid anchor "${trimmed}". hash_range_inclusive must contain "line:hash" only — remove everything from "│" onward.`;
+		return `[E_BAD_REF] Invalid anchor "${trimmed}". hash_range_inclusive must contain the anchor only — remove everything from "│" onward.`;
 	}
 
-	return `[E_BAD_REF] Invalid anchor "${trimmed}". Expected "line:hash" from the most recent read (e.g. "42:aB").`;
+	return `[E_BAD_REF] Invalid anchor "${trimmed}". Expected an anchor copied verbatim from the most recent read (e.g. "4274293").`;
 }
 
 function parseRef(ref: string): Anchor {

@@ -4,7 +4,7 @@ import {
   lineHashes,
   parseEdits,
 } from "../../src/hashline";
-import { anchorAt } from "../support/fixtures";
+import { anchorAt, fakeAnchor } from "../support/fixtures";
 
 describe("resAnchor (via resolveEdits)", () => {
   it("resolves a line:hash anchor that matches the current line exactly", () => {
@@ -20,7 +20,7 @@ describe("resAnchor (via resolveEdits)", () => {
     const content = "a\nb\nc\nd\ne";
     expect(() =>
       applyEdits(content, parseEdits([
-        { hash_range_inclusive: ["99:ZZ", "99:ZZ"], content_lines: ["X"] },
+        { hash_range_inclusive: [fakeAnchor(99), fakeAnchor(99)], content_lines: ["X"] },
       ]))
     ).toThrow(/E_STALE_ANCHOR/);
   });

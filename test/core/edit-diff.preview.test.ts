@@ -5,10 +5,10 @@ describe("genDiff", () => {
 	it("adds line:hash anchors for context and addition lines, and no anchor for deletion lines", () => {
 		const result = genDiff("alpha\nbeta\ngamma", "alpha\nBETA\ngamma");
 		const diff = result.diff;
-		expect(diff).toMatch(/^ \d+:[A-Za-z0-9_-]{2}│alpha$/m);
-		expect(diff).toMatch(/^\+\d+:[A-Za-z0-9_-]{2}│BETA$/m);
+		expect(diff).toMatch(/^ \d+│alpha$/m);
+		expect(diff).toMatch(/^\+\d+│BETA$/m);
 		expect(diff).toMatch(/^-beta$/m);
-		expect(diff).toMatch(/^ \d+:[A-Za-z0-9_-]{2}│gamma$/m);
+		expect(diff).toMatch(/^ \d+│gamma$/m);
 	});
 
 	it("anchors context and addition lines with their correct line number", () => {
@@ -28,10 +28,10 @@ describe("genDiff", () => {
 		const { diff } = genDiff(before, after);
 		const lines = diff.split("\n");
 
-		expect(lines).toContainEqual(expect.stringMatching(/^ 1:[A-Za-z0-9_-]{2}│function greet\(name\) \{$/));
+		expect(lines).toContainEqual(expect.stringMatching(/^ 1\d{5}│function greet\(name\) \{$/));
 		expect(lines).toContainEqual(expect.stringMatching(/^-\s{2}console\.log\('old'\)$/));
-		expect(lines).toContainEqual(expect.stringMatching(/^\+2:[A-Za-z0-9_-]{2}│ {2}return `Hello, \$\{name\}`$/));
-		expect(lines).toContainEqual(expect.stringMatching(/^ 3:[A-Za-z0-9_-]{2}│\}$/));
+		expect(lines).toContainEqual(expect.stringMatching(/^\+2\d{5}│ {2}return `Hello, \$\{name\}`$/));
+		expect(lines).toContainEqual(expect.stringMatching(/^ 3\d{5}│\}$/));
 	});
 	it("truncates context between two distant changes", () => {
 		const lines = [];

@@ -136,8 +136,8 @@ describe("auto-read after write", () => {
 
       const autoReadText = writeResult!.content![1]!.text!;
       expect(autoReadText).toContain("--- Auto-read (hashline anchors) ---");
-      expect(autoReadText).toMatch(/\d+:[A-Za-z0-9_-]{2}│hello/);
-      expect(autoReadText).toMatch(/\d+:[A-Za-z0-9_-]{2}│world/);
+      expect(autoReadText).toMatch(/\d+│hello/);
+      expect(autoReadText).toMatch(/\d+│world/);
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
@@ -268,7 +268,7 @@ describe("auto-read after write", () => {
       const autoReadText = writeResult!.content![1]!.text!;
 
       const lines = autoReadText.split("\n");
-      const hashlinePattern = /^\d+:[A-Za-z0-9_-]{2}│/;
+      const hashlinePattern = /^\d+│/;
 
       const headerIndex = lines.findIndex((l) =>
         l.includes("--- Auto-read (hashline anchors) ---"),
@@ -371,8 +371,8 @@ describe("auto-read after write", () => {
 
       const autoReadText = replaceResult!.content![1]!.text!;
       expect(autoReadText).toContain("--- Auto-read (hashline anchors) ---");
-      expect(autoReadText).toMatch(/\d+:[A-Za-z0-9_-]{2}│alpha/);
-      expect(autoReadText).toMatch(/\d+:[A-Za-z0-9_-]{2}│beta/);
+      expect(autoReadText).toMatch(/\d+│alpha/);
+      expect(autoReadText).toMatch(/\d+│beta/);
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }

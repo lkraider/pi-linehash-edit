@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFile } from "fs/promises";
 import { lineHashes } from "../../src/hashline";
 import { flatEditToolSchema, regReplaceFlat } from "../../src/replace";
-import { makeFakePiRegistry, withTempFile, anchorAt } from "../support/fixtures";
+import { makeFakePiRegistry, withTempFile, anchorAt, fakeAnchor } from "../support/fixtures";
 
 describe("flatEditToolSchema", () => {
   it("has path, hash_range_inclusive, and content_lines at top level", () => {
@@ -46,10 +46,10 @@ describe("regReplaceFlat", () => {
     const tool = getTool("replace");
     const result = tool.prepareArguments({
       path: "test.txt",
-      changes: [{ hash_range_inclusive: ["1:aB", "1:aB"], content_lines: ["new"] }],
+      changes: [{ hash_range_inclusive: [fakeAnchor(1), fakeAnchor(1)], content_lines: ["new"] }],
     });
     expect(result.changes).toBeUndefined();
-    expect(result.hash_range_inclusive).toEqual(["1:aB", "1:aB"]);
+    expect(result.hash_range_inclusive).toEqual([fakeAnchor(1), fakeAnchor(1)]);
     expect(result.content_lines).toEqual(["new"]);
   });
 
@@ -61,8 +61,8 @@ describe("regReplaceFlat", () => {
       tool.prepareArguments({
         path: "test.txt",
         changes: [
-          { hash_range_inclusive: ["1:aB", "1:aB"], content_lines: ["one"] },
-          { hash_range_inclusive: ["2:cD", "2:cD"], content_lines: ["two"] },
+          { hash_range_inclusive: [fakeAnchor(1), fakeAnchor(1)], content_lines: ["one"] },
+          { hash_range_inclusive: [fakeAnchor(2), fakeAnchor(2)], content_lines: ["two"] },
         ],
       }),
     ).toThrow(/\[E_BAD_SHAPE\] Flat mode allows exactly one edit per call/);
@@ -180,7 +180,7 @@ describe("regReplaceFlat", () => {
           "e1",
           {
             path: "sample.txt",
-            hash_range_inclusive: ["1:ZZ", "1:ZZ"],
+            hash_range_inclusive: [fakeAnchor(1), fakeAnchor(1)],
             content_lines: ["x"],
           },
           undefined,

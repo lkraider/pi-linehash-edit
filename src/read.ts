@@ -63,7 +63,7 @@ function emptyOrOutOfRangeResult(
 			const allHashes = precomputedHashes ?? lineHashes(text);
 			const emptyLineHash = allHashes[0] ?? "";
 			return {
-				text: `1:${emptyLineHash}${HASH_SEP}\n[File is empty. Use replace to insert content.]`,
+				text: `1${emptyLineHash}${HASH_SEP}\n[File is empty. Use replace to insert content.]`,
 			};
 		}
 		return {

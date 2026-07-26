@@ -44,13 +44,13 @@ import { loadP, loadGuide } from "./prompts";
 
 const contentLinesSchema = Type.Array(Type.String(), {
   description:
-    "literal replacement file content, one string per line. Must not include the line:hash│ prefix from read output.",
+    "literal replacement file content, one string per line. Must not include the anchor│ prefix from read output.",
 });
 
 const hashRangeInclSchema = Type.Array(
-  Type.String({ description: "anchor (\"line:hash\", e.g. \"42:aB\")" }),
+  Type.String({ description: "anchor copied verbatim from read output, e.g. \"4274293\"" }),
   {
-    description: "inclusive anchor range to replace [start, end]. Each element is a \"line:hash\" anchor copied verbatim from read output; do not include the │ separator or line content.",
+    description: "inclusive anchor range to replace [start, end]. Each element is an anchor copied verbatim from read output; do not include the │ separator or line content.",
     minItems: 2,
     maxItems: 2,
   },
@@ -265,27 +265,27 @@ const MODE_CFG = {
   flat: {
     desc: " Only one edit per call. The `hash_range_inclusive` and `content_lines` fields sit at the top level of the request object.",
     examples: [
-      "", "Single line:", "{ \"content_lines\": [\"const x = 1;\"], \"hash_range_inclusive\": [\"12:MQ\", \"12:MQ\"], \"path\": \"src/main.ts\" }", "", "Range replace:", "{ \"content_lines\": [\"function greet() {\", \"  return 1;\", \"}\"], \"hash_range_inclusive\": [\"5:ZP\", \"7:VR\"], \"path\": \"src/main.ts\" }",
+      "", "Single line:", "{ \"content_lines\": [\"const x = 1;\"], \"hash_range_inclusive\": [\"1274293\", \"1274293\"], \"path\": \"src/main.ts\" }", "", "Range replace:", "{ \"content_lines\": [\"function greet() {\", \"  return 1;\", \"}\"], \"hash_range_inclusive\": [\"512044\", \"798701\"], \"path\": \"src/main.ts\" }",
     ].join("\n"),
     rules: "",
     requestStructure: [
-      "Flat mode:", "```json", "{ \"content_lines\": [...], \"hash_range_inclusive\": [\"5:aB\", \"7:xY\"], \"path\": \"...\" }", "```",
+      "Flat mode:", "```json", "{ \"content_lines\": [...], \"hash_range_inclusive\": [\"512044\", \"798701\"], \"path\": \"...\" }", "```",
     ].join("\n"),
     prefix: "one edit per call (flat mode)",
-    guidePrefix: "- Use `replace` with line:hash anchors for all file changes. Only one edit per call.",
+    guidePrefix: "- Use `replace` with anchors from read for all file changes. Only one edit per call.",
     parameters: flatEditToolSchema,
   },
   bulk: {
     desc: "\n\nBatch every edit to one file into a single `replace` call via the `changes` array, even when regions are far apart. All anchors in one call must come from the same read — the edits apply atomically against that one snapshot.",
     examples: [
-      "", "Single line:", "{ \"changes\": [{ \"content_lines\": [\"const x = 1;\"], \"hash_range_inclusive\": [\"12:MQ\", \"12:MQ\"] }], \"path\": \"src/main.ts\" }", "", "Range replace:", "{ \"changes\": [{ \"content_lines\": [\"function greet() {\", \"  return 1;\", \"}\"], \"hash_range_inclusive\": [\"5:ZP\", \"7:VR\"] }], \"path\": \"src/main.ts\" }",
+      "", "Single line:", "{ \"changes\": [{ \"content_lines\": [\"const x = 1;\"], \"hash_range_inclusive\": [\"1274293\", \"1274293\"] }], \"path\": \"src/main.ts\" }", "", "Range replace:", "{ \"changes\": [{ \"content_lines\": [\"function greet() {\", \"  return 1;\", \"}\"], \"hash_range_inclusive\": [\"512044\", \"798701\"] }], \"path\": \"src/main.ts\" }",
     ].join("\n"),
     rules: "- Multiple edits in one call must not overlap. Overlapping ranges are rejected with [E_EDIT_CONFLICT].",
     requestStructure: [
-      "Bulk mode (default):", "```json", "{ \"changes\": [{ \"content_lines\": [...], \"hash_range_inclusive\": [\"5:aB\", \"7:xY\"] }], \"path\": \"...\" }", "```",
+      "Bulk mode (default):", "```json", "{ \"changes\": [{ \"content_lines\": [...], \"hash_range_inclusive\": [\"512044\", \"798701\"] }], \"path\": \"...\" }", "```",
     ].join("\n"),
     prefix: "batching all changes to a file in one call",
-    guidePrefix: "- Use `replace` with line:hash anchors for all file changes; batch every change to one file into a single `replace` call.",
+    guidePrefix: "- Use `replace` with anchors from read for all file changes; batch every change to one file into a single `replace` call.",
     parameters: editToolSchema,
   },
 } as const;
