@@ -146,7 +146,11 @@ export function buildAppliedText(
 	const warnings = extractWarnings(text);
 	if (warnings) sections.push(warnings);
 
-	return sections.length > 0 ? sections.join("\n\n") : undefined;
+	if (sections.length > 0) return sections.join("\n\n");
+	// A large edit with details.diff size-gated to "" and no warnings still
+	// has real, non-empty result text ("Successfully replaced...") — fall
+	// back to it instead of rendering nothing.
+	return text;
 }
 
 function trimEmpty(lines: string[]): string[] {

@@ -3,6 +3,9 @@ import { lineHashes } from "../../src/hashline";
 import { shouldSkipDiff } from "../../src/replace-diff";
 import { MAX_DIFF_LINES } from "../../src/constants";
 import { withTempFile, setupIntegrationTest, anchorAt } from "../support/fixtures";
+import { isApplied, buildAppliedText } from "../../src/replace-render";
+
+const noopTheme = { fg: (_color: string, text: string) => text } as any;
 
 function manyLines(n: number): string {
   return Array.from({ length: n }, (_, i) => `line${i + 1}`).join("\n") + "\n";
@@ -47,6 +50,31 @@ describe("replace diff size-gate", () => {
       expect(result.details?.diff).toBe("");
       expect(result.details?.firstChangedLine).toBe(2);
       expect(result.details?.metrics?.changed_lines).toEqual({ first: 2, last: 2 });
+    });
+  });
+
+  it("does not render a blank result for a large successful edit with no warnings", async () => {
+    const content = manyLines(MAX_DIFF_LINES + 1);
+    await withTempFile("big2.ts", content, async ({ cwd }) => {
+      const { ctx, editTool } = setupIntegrationTest(cwd);
+      const hashes = await lineHashes(content);
+
+      const result = await editTool.execute(
+        "e1",
+        {
+          path: "big2.ts",
+          changes: [{ hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["CHANGED"] }],
+        },
+        undefined,
+        undefined,
+        ctx,
+      );
+
+      expect(result.details?.diff).toBe("");
+      expect(isApplied(result.details)).toBe(true);
+      const rendered = buildAppliedText(result.content[0].text, result.details, noopTheme);
+      expect(rendered).toBeDefined();
+      expect(rendered).toContain("Successfully replaced");
     });
   });
 
