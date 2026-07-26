@@ -2,16 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   applyEdits,
   lineHashes,
-  parseEdits,
 } from "../../src/hashline";
-import { anchorAt } from "../support/fixtures";
+import { anchorAt, parseEditsIn } from "../support/fixtures";
 
 describe("applyEdits — recovery scenarios", () => {
   it("rejects reversed range (start > end)", async () => {
     const content = "a\nb\nc\nd\ne";
     const hashes = await lineHashes(content);
     expect(() =>
-      applyEdits(content, parseEdits([
+      applyEdits(content, parseEditsIn(content, [
         { hash_range_inclusive: [anchorAt(hashes, 4), anchorAt(hashes, 2)], content_lines: ["X"] },
       ]))
     ).toThrow(/E_BAD_OP/);
@@ -21,7 +20,7 @@ describe("applyEdits — recovery scenarios", () => {
     const content = "a\nb\nc\nd\ne";
     const hashes = await lineHashes(content);
     expect(() =>
-      applyEdits(content, parseEdits([
+      applyEdits(content, parseEditsIn(content, [
         { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: ["X", "Y"] },
         { hash_range_inclusive: [anchorAt(hashes, 3), anchorAt(hashes, 4)], content_lines: ["Y"] },
       ]))
@@ -32,7 +31,7 @@ describe("applyEdits — recovery scenarios", () => {
     const content = "a\nb\nc\nd\ne";
     const hashes = await lineHashes(content);
     expect(() =>
-      applyEdits(content, parseEdits([
+      applyEdits(content, parseEditsIn(content, [
         { hash_range_inclusive: [anchorAt(hashes, 1), anchorAt(hashes, 2)], content_lines: ["X", "Y"] },
       ]), undefined, ["STALE", "STALE", "STALE", "STALE", "STALE"])
     ).toThrow(/E_STALE_ANCHOR/);
@@ -44,7 +43,7 @@ describe("applyEdits — recovery scenarios", () => {
     expect(hashes[0]).toBe(hashes[2]);
 
     expect(() =>
-      applyEdits(content, parseEdits([
+      applyEdits(content, parseEditsIn(content, [
         { hash_range_inclusive: [`2:${hashes[0]}`, `2:${hashes[0]}`], content_lines: ["X"] },
       ]))
     ).toThrow(/E_STALE_ANCHOR/);
@@ -52,34 +51,34 @@ describe("applyEdits — recovery scenarios", () => {
 
   it("rejects unknown fields in edit items", () => {
     const edits = [{ hash_range_inclusive: ["1:ZZ", "1:ZZ"], content_lines: ["x"], extra: true }] as any;
-    expect(() => parseEdits(edits)).toThrow(/unknown or unsupported fields/);
+    expect(() => parseEditsIn("a\nb", edits)).toThrow(/unknown or unsupported fields/);
   });
 
   it("rejects missing content_lines", () => {
     const edits = [{ hash_range_inclusive: ["1:ZZ", "1:ZZ"] }] as any;
-    expect(() => parseEdits(edits)).toThrow(/requires a "content_lines" field/);
+    expect(() => parseEditsIn("a\nb", edits)).toThrow(/requires a "content_lines" field/);
   });
 
   it("rejects null content_lines", () => {
     const edits = [{ hash_range_inclusive: ["1:ZZ", "1:ZZ"], content_lines: null }] as any;
-    expect(() => parseEdits(edits)).toThrow(/content_lines" must be a string array/);
+    expect(() => parseEditsIn("a\nb", edits)).toThrow(/content_lines" must be a string array/);
   });
 
   it("rejects string content_lines", () => {
     const edits = [{ hash_range_inclusive: ["1:ZZ", "1:ZZ"], content_lines: "hello\nworld\n" }] as any;
-    expect(() => parseEdits(edits)).toThrow(/must be a native JSON array of strings, not a JSON string/);
+    expect(() => parseEditsIn("a\nb", edits)).toThrow(/must be a native JSON array of strings, not a JSON string/);
   });
 
   it("rejects malformed hash_range_inclusive", () => {
     const edits = [{ hash_range_inclusive: ["not-valid", "not-valid"] as [string, string], content_lines: ["x"] }];
-    expect(() => parseEdits(edits)).toThrow(/Invalid anchor/);
+    expect(() => parseEditsIn("a\nb", edits)).toThrow(/Invalid anchor/);
   });
 
   it("rejects bare hash prefix in content_lines", async () => {
     const content = "a\nb\nc\nd\ne";
     const hashes = await lineHashes(content);
     expect(() =>
-      applyEdits(content, parseEdits([
+      applyEdits(content, parseEditsIn(content, [
         { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)] as [string, string], content_lines: [`${anchorAt(hashes, 2)}│b`, "X"] },
       ]))
     ).toThrow(/E_BARE_HASH_PREFIX/);
@@ -89,7 +88,7 @@ describe("applyEdits — recovery scenarios", () => {
     const content = "a\nb\nc";
     const hashes = await lineHashes(content);
     expect(() =>
-      applyEdits(content, parseEdits([
+      applyEdits(content, parseEditsIn(content, [
         { hash_range_inclusive: [anchorAt(hashes, 1), anchorAt(hashes, 1)] as [string, string], content_lines: [`+${anchorAt(hashes, 1)}│new`] },
       ]))
     ).toThrow(/E_BARE_HASH_PREFIX/);
@@ -98,7 +97,7 @@ describe("applyEdits — recovery scenarios", () => {
   it("warns on unicode escape sequences in content", async () => {
     const content = "a\nb\nc";
     const hashes = await lineHashes(content);
-    const result = applyEdits(content, parseEdits([
+    const result = applyEdits(content, parseEditsIn(content, [
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["\\uDDDD"] },
     ]));
     expect(result.warnings).toBeDefined();
@@ -108,7 +107,7 @@ describe("applyEdits — recovery scenarios", () => {
   it("handles tab characters in content_lines", async () => {
     const content = "a\nb\nc";
     const hashes = await lineHashes(content);
-    const result = applyEdits(content, parseEdits([
+    const result = applyEdits(content, parseEditsIn(content, [
       { hash_range_inclusive: [anchorAt(hashes, 3), anchorAt(hashes, 3)], content_lines: ["\t\treplaced"] },
     ]));
     expect(result.content).toBe("a\nb\n\t\treplaced");
@@ -117,7 +116,7 @@ describe("applyEdits — recovery scenarios", () => {
   it("preserves literal tab in content_lines", async () => {
     const content = "a\nb\nc";
     const hashes = await lineHashes(content);
-    const result = applyEdits(content, parseEdits([
+    const result = applyEdits(content, parseEditsIn(content, [
       { hash_range_inclusive: [anchorAt(hashes, 3), anchorAt(hashes, 3)], content_lines: ["\t\treplaced"] },
     ]));
     expect(result.content).toContain("\t\treplaced");
@@ -126,7 +125,7 @@ describe("applyEdits — recovery scenarios", () => {
   it("handles multiple edits in one call", async () => {
     const content = "a\nb\nc\nd\ne";
     const hashes = await lineHashes(content);
-    const result = applyEdits(content, parseEdits([
+    const result = applyEdits(content, parseEditsIn(content, [
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["x1", "x2", "x3"] },
       { hash_range_inclusive: [anchorAt(hashes, 4), anchorAt(hashes, 4)], content_lines: ["y1"] },
     ]));
@@ -136,7 +135,7 @@ describe("applyEdits — recovery scenarios", () => {
   it("detects noop when content unchanged", async () => {
     const content = "a\nb\nc";
     const hashes = await lineHashes(content);
-    const result = applyEdits(content, parseEdits([
+    const result = applyEdits(content, parseEditsIn(content, [
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["b"] },
     ]));
     expect(result.noopEdits).toHaveLength(1);
@@ -145,7 +144,7 @@ describe("applyEdits — recovery scenarios", () => {
   it("detects noop for range", async () => {
     const content = "a\nb\nc\nd";
     const hashes = await lineHashes(content);
-    const result = applyEdits(content, parseEdits([
+    const result = applyEdits(content, parseEditsIn(content, [
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 3)], content_lines: ["b", "c"] },
     ]));
     expect(result.noopEdits).toHaveLength(1);
@@ -159,7 +158,7 @@ describe("applyEdits — recovery scenarios", () => {
   it("handles single-line file", async () => {
     const content = "hello";
     const hashes = await lineHashes(content);
-    const result = applyEdits(content, parseEdits([
+    const result = applyEdits(content, parseEditsIn(content, [
       { hash_range_inclusive: [anchorAt(hashes, 1), anchorAt(hashes, 1)], content_lines: ["world"] },
     ]));
     expect(result.content).toBe("world");
@@ -168,7 +167,7 @@ describe("applyEdits — recovery scenarios", () => {
   it("handles append to last line", async () => {
     const content = "a\nb";
     const hashes = await lineHashes(content);
-    const result = applyEdits(content, parseEdits([
+    const result = applyEdits(content, parseEditsIn(content, [
       { hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)], content_lines: ["b", "c"] },
     ]));
     expect(result.content).toBe("a\nb\nc");
@@ -177,7 +176,7 @@ describe("applyEdits — recovery scenarios", () => {
   it("handles delete of first line", async () => {
     const content = "a\nb\nc";
     const hashes = await lineHashes(content);
-    const result = applyEdits(content, parseEdits([
+    const result = applyEdits(content, parseEditsIn(content, [
       { hash_range_inclusive: [anchorAt(hashes, 1), anchorAt(hashes, 1)], content_lines: [] },
     ]));
     expect(result.content).toBe("b\nc");
@@ -186,7 +185,7 @@ describe("applyEdits — recovery scenarios", () => {
   it("handles delete of last line", async () => {
     const content = "a\nb\nc";
     const hashes = await lineHashes(content);
-    const result = applyEdits(content, parseEdits([
+    const result = applyEdits(content, parseEditsIn(content, [
       { hash_range_inclusive: [anchorAt(hashes, 3), anchorAt(hashes, 3)], content_lines: [] },
     ]));
     expect(result.content).toBe("a\nb");
@@ -195,7 +194,7 @@ describe("applyEdits — recovery scenarios", () => {
   it("handles replace of entire file", async () => {
     const content = "a\nb\nc";
     const hashes = await lineHashes(content);
-    const result = applyEdits(content, parseEdits([
+    const result = applyEdits(content, parseEditsIn(content, [
       { hash_range_inclusive: [anchorAt(hashes, 1), anchorAt(hashes, 3)], content_lines: ["x", "y"] },
     ]));
     expect(result.content).toBe("x\ny");

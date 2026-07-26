@@ -1,5 +1,5 @@
 import { abortIf, rejectUnknownFields, lastNonEmpty, firstNonEmpty } from "../utils";
-import { HL_BARE_PREFIX_RE, ANCHOR_RE } from "./hash";
+import { HL_BARE_PREFIX_RE, hashDigitsFor, blankHash, splitAnchor, formatAnchor } from "./hash";
 import { parseHashRef, parseText, type Anchor } from "./parse";
 import { CONTENT_LINES_NOT_STRING_MSG } from "../constants";
 
@@ -37,7 +37,8 @@ export type RawEdit = {
 
 function resolveAnchor(ref: Anchor, fileHashes: string[]): ResolvedAnchor | HMismatch {
 	if (ref.line < 1 || ref.line > fileHashes.length) return { ref };
-	if (fileHashes[ref.line - 1] !== ref.hash) return { ref };
+	const expected = ref.hash === "" ? blankHash(hashDigitsFor(fileHashes.length)) : ref.hash;
+	if (fileHashes[ref.line - 1] !== expected) return { ref };
 	return { line: ref.line, hash: ref.hash };
 }
 
@@ -68,7 +69,7 @@ export function formatMismatch(
       if (m.ref.line < 1 || m.ref.line > fileLines.length) {
         return `  ${m.ref.line}${m.ref.hash} — line ${m.ref.line} does not exist (file has ${fileLines.length} line(s)).`;
       }
-      return `  ${m.ref.line}${m.ref.hash} — line ${m.ref.line} is now ${m.ref.line}${fileHashes[m.ref.line - 1]} = ${JSON.stringify(fileLines[m.ref.line - 1])}.`;
+      return `  ${m.ref.line}${m.ref.hash} — line ${m.ref.line} is now ${formatAnchor(m.ref.line, fileHashes[m.ref.line - 1]!)} = ${JSON.stringify(fileLines[m.ref.line - 1])}.`;
     })
     .join("\n");
 
@@ -129,7 +130,7 @@ function assertItem(edit: Record<string, unknown>, index: number): void {
   }
 }
 
-export function parseEdits(edits: RawEdit[]): ParsedEdit[] {
+export function parseEdits(edits: RawEdit[], hashDigits: number): ParsedEdit[] {
   const result: ParsedEdit[] = [];
   for (const [index, edit] of edits.entries()) {
     assertItem(edit as Record<string, unknown>, index);
@@ -137,7 +138,7 @@ export function parseEdits(edits: RawEdit[]): ParsedEdit[] {
     const replaceLines = parseText(edit.content_lines);
     result.push({
       content_lines: replaceLines,
-      hash_range_inclusive: [parseHashRef(edit.hash_range_inclusive[0]), parseHashRef(edit.hash_range_inclusive[1])],
+      hash_range_inclusive: [parseHashRef(edit.hash_range_inclusive[0], hashDigits), parseHashRef(edit.hash_range_inclusive[1], hashDigits)],
     });
   }
   return result;
@@ -163,6 +164,7 @@ export function assertNoBarePrefix(
   warnings: string[],
 ): void {
   const suspects: { line: string; editIndex: number; lineIndex: number }[] = [];
+  const digits = hashDigitsFor(fileHashes.length);
   for (let editIndex = 0; editIndex < edits.length; editIndex++) {
     const edit = edits[editIndex]!;
     const [start, end] = edit.hash_range_inclusive;
@@ -170,12 +172,14 @@ export function assertNoBarePrefix(
       const line = edit.content_lines[lineIndex]!;
       const match = HL_BARE_PREFIX_RE.exec(line);
       if (!match) continue;
-      const anchor = ANCHOR_RE.exec(match[1]!);
-      if (!anchor) continue;
-      const anchorLine = Number(anchor[1]);
-      if (fileHashes[anchorLine - 1] !== anchor[2]) continue;
+      const anchor = splitAnchor(match[1]!, digits);
+      const rest = line.slice(match[0].length);
+      if (anchor.hash === "" && rest !== "") continue;
+      const expected = anchor.hash === "" ? blankHash(digits) : anchor.hash;
+      const anchorLine = anchor.line;
+      if (fileHashes[anchorLine - 1] !== expected) continue;
       const inRange = anchorLine >= start.line && anchorLine <= end.line;
-      const verbatimRow = line.slice(match[0].length) === fileLines[anchorLine - 1];
+      const verbatimRow = rest === fileLines[anchorLine - 1];
       if (inRange || verbatimRow) {
         suspects.push({ line, editIndex, lineIndex });
       } else {

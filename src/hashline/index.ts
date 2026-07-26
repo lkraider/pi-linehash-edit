@@ -1,10 +1,11 @@
 export {
-	HASH_DIGITS,
 	HASH_SEP,
-	HASH_CLASS,
-	ANCHOR_CLASS,
-	ANCHOR_RE,
 	HL_BARE_PREFIX_RE,
+	hashDigitsFor,
+	hashWidthOf,
+	blankHash,
+	formatAnchor,
+	splitAnchor,
 	lineHash,
 	lineHashes,
 } from "./hash";

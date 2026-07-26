@@ -1,15 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { readFile, writeFile } from "fs/promises";
-import {
-  withTempFile,
-  setupIntegrationTest,
-  getText,
-  extractHash,
-  anchorAt,
-} from "../support/fixtures";
+import { withTempFile, setupIntegrationTest, getText, extractHash, anchorAt, parseEditsIn } from "../support/fixtures";
 import {
   applyEdits,
-  parseEdits,
   changedRange,
   lineHash,
   lineHashes,
@@ -51,7 +44,7 @@ describe("BOUNDARY (accepted): anchors detect drift, they do not prove freshness
     let a = "", b = "";
     for (let i = 0; i < 20000; i++) {
       const candidate = `v${i}`;
-      const h = lineHash(candidate);
+      const h = lineHash(candidate, 4);
       const prior = seen.get(h);
       if (prior !== undefined) {
         a = prior;
@@ -143,7 +136,7 @@ describe("BREAK: span math on deletions", () => {
   it("deletes two adjacent lines when the second is the final line without a trailing newline", () => {
     const content = "a\nb\nc";
     const hashes = lineHashes(content);
-    const edits = parseEdits([
+    const edits = parseEditsIn(content, [
       { content_lines: [], hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)] },
       { content_lines: [], hash_range_inclusive: [anchorAt(hashes, 3), anchorAt(hashes, 3)] },
     ]);
@@ -155,7 +148,7 @@ describe("BREAK: span math on deletions", () => {
   it("deletes two non-adjacent lines including the final line (control: should pass)", () => {
     const content = "a\nb\nc\nd";
     const hashes = lineHashes(content);
-    const edits = parseEdits([
+    const edits = parseEditsIn(content, [
       { content_lines: [], hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)] },
       { content_lines: [], hash_range_inclusive: [anchorAt(hashes, 4), anchorAt(hashes, 4)] },
     ]);
@@ -167,7 +160,7 @@ describe("BREAK: span math on deletions", () => {
   it("rejects two edits targeting the same range with different content (control: should pass)", () => {
     const content = "a\nb\nc";
     const hashes = lineHashes(content);
-    const edits = parseEdits([
+    const edits = parseEditsIn(content, [
       { content_lines: ["x"], hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)] },
       { content_lines: ["y"], hash_range_inclusive: [anchorAt(hashes, 2), anchorAt(hashes, 2)] },
     ]);
@@ -178,7 +171,7 @@ describe("BREAK: span math on deletions", () => {
   it("empties a file that contains only a blank line", () => {
     const content = "\n";
     const hashes = lineHashes(content);
-    const edits = parseEdits([
+    const edits = parseEditsIn(content, [
       { content_lines: [], hash_range_inclusive: [anchorAt(hashes, 1), anchorAt(hashes, 1)] },
     ]);
 

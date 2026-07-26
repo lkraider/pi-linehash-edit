@@ -4,9 +4,9 @@ import { beforeAll, afterAll, vi } from "vitest";
 import { Compile } from "typebox/compile";
 import register from "../../index";
 import { regReplaceFlat } from "../../src/replace";
-import { HASH_DIGITS, HASH_SEP } from "../../src/hashline";
+import { HASH_SEP, hashWidthOf, formatAnchor, parseEdits, type RawEdit, type ParsedEdit } from "../../src/hashline";
 
-const HASH_RE = `\\d{${HASH_DIGITS}}`;
+const HASH_RE = "\\d{4,5}";
 async function getWritableTempRoot(): Promise<string> {
   const fallback = join(process.cwd(), ".tmp");
   await mkdir(fallback, { recursive: true });
@@ -178,12 +178,12 @@ export function extractHash(line: string): string {
   return line.split("│")[0]!
 }
 
-export function anchorHash(row: string): string {
-  return extractHash(row).slice(-HASH_DIGITS);
+export function anchorHash(row: string, content: string): string {
+  return extractHash(row).slice(-hashWidthOf(content));
 }
 
 export function anchorAt(hashes: string[], line: number): string {
-  return `${line}${hashes[line - 1]}`;
+  return formatAnchor(line, hashes[line - 1]!);
 }
 
 export const anchorShapeRe = new RegExp(`^\\d+${HASH_RE}$`);
@@ -198,8 +198,12 @@ export function anchorRowRe(
   return new RegExp(`^${pfx}${lineRe}${HASH_RE}${HASH_SEP}${esc}$`, "m");
 }
 
-export function fakeAnchor(line: number): string {
-  return `${line}${"9".repeat(HASH_DIGITS)}`;
+export function fakeAnchor(line: number, width = 5): string {
+  return `${line}${"9".repeat(width)}`;
+}
+
+export function parseEditsIn(content: string, edits: RawEdit[]): ParsedEdit[] {
+  return parseEdits(edits, hashWidthOf(content));
 }
 
 export async function makeTag(content: string, line: number, _path?: string): Promise<{ line: number; hash: string }> {

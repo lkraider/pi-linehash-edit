@@ -1,7 +1,9 @@
-import { ANCHOR_RE } from "./hash";
+import { splitAnchor } from "./hash";
 import { CONTENT_LINES_NOT_STRING_MSG } from "../constants";
 
 export type Anchor = { line: number; hash: string };
+
+const REF_RE = /^(\d+)(:?)(\d*)$/;
 
 function diagRef(ref: string): string {
 	const trimmed = ref.trim();
@@ -17,11 +19,20 @@ function diagRef(ref: string): string {
 	return `[E_BAD_REF] Invalid anchor "${trimmed}". Expected an anchor copied verbatim from the most recent read (e.g. "4274293").`;
 }
 
-function parseRef(ref: string): Anchor {
+function parseRef(ref: string, hashDigits: number): Anchor {
 	const trimmed = ref.trim();
-	const match = ANCHOR_RE.exec(trimmed);
+	const match = REF_RE.exec(trimmed);
 	if (!match) throw new Error(diagRef(ref));
-	return { line: Number(match[1]), hash: match[2]! };
+
+	if (match[2] === ":") {
+		const hash = match[3]!;
+		if (hash.length !== hashDigits && hash.length !== 0) {
+			throw new Error(diagRef(ref));
+		}
+		return { line: Number(match[1]), hash };
+	}
+
+	return splitAnchor(trimmed, hashDigits);
 }
 
 export const parseHashRef = parseRef;

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	applyEdits,
 	lineHashes,
+	hashDigitsFor,
 	parseText,
 } from "../../src/hashline";
 
@@ -40,12 +41,22 @@ describe("strict hashline contract", () => {
 });
 
 describe("line:hash addressing", () => {
-	it("returns one hash per line, 5-digit", () => {
+	it("returns one hash per line, 4-digit in small files", () => {
 		const hashes = lineHashes("alpha\nbeta\ngamma");
 		expect(hashes).toHaveLength(3);
-		expect(hashes[0]).toMatch(/^\d{5}$/);
-		expect(hashes[1]).toMatch(/^\d{5}$/);
-		expect(hashes[2]).toMatch(/^\d{5}$/);
+		for (const h of hashes) expect(h).toMatch(/^\d{4}$/);
+	});
+
+	it("uses 5-digit hashes for files over 99 lines", () => {
+		const big = Array.from({ length: 120 }, (_, i) => `line ${i}`).join("\n");
+		const hashes = lineHashes(big);
+		expect(hashes).toHaveLength(120);
+		for (const h of hashes) expect(h).toMatch(/^\d{5}$/);
+	});
+
+	it("band boundary: 99 split-lines is 4-digit, 100 is 5-digit", () => {
+		expect(hashDigitsFor(99)).toBe(4);
+		expect(hashDigitsFor(100)).toBe(5);
 	});
 
 	it("gives identical content the same hash regardless of position", () => {

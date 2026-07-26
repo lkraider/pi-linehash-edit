@@ -28,10 +28,10 @@ describe("genDiff", () => {
 		const { diff } = genDiff(before, after);
 		const lines = diff.split("\n");
 
-		expect(lines).toContainEqual(expect.stringMatching(/^ 1\d{5}│function greet\(name\) \{$/));
+		expect(lines).toContainEqual(expect.stringMatching(/^ 1\d{4,5}│function greet\(name\) \{$/));
 		expect(lines).toContainEqual(expect.stringMatching(/^-\s{2}console\.log\('old'\)$/));
-		expect(lines).toContainEqual(expect.stringMatching(/^\+2\d{5}│ {2}return `Hello, \$\{name\}`$/));
-		expect(lines).toContainEqual(expect.stringMatching(/^ 3\d{5}│\}$/));
+		expect(lines).toContainEqual(expect.stringMatching(/^\+2\d{4,5}│ {2}return `Hello, \$\{name\}`$/));
+		expect(lines).toContainEqual(expect.stringMatching(/^ 3\d{4,5}│\}$/));
 	});
 	it("truncates context between two distant changes", () => {
 		const lines = [];

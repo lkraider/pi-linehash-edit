@@ -66,8 +66,8 @@ describe("end-to-end via tool: duplicate lines after an edit", () => {
 
       const braceLines = lines1.filter((l) => l.endsWith("│}"));
       expect(braceLines).toHaveLength(2);
-      const firstBraceHash = anchorHash(braceLines[0]!);
-      const secondBraceHash = anchorHash(braceLines[1]!);
+      const firstBraceHash = anchorHash(braceLines[0]!, file);
+      const secondBraceHash = anchorHash(braceLines[1]!, file);
       expect(firstBraceHash).toBe(secondBraceHash);
 
       const line1Hash = extractHash(lines1.find((l) => l.includes("│function a()"))!);
@@ -87,7 +87,7 @@ describe("end-to-end via tool: duplicate lines after an edit", () => {
       const lines2 = getText(read2).split("\n");
       const survivingBrace = lines2.find((l) => l.endsWith("│}"))!;
       expect(survivingBrace).toBeTruthy();
-      expect(anchorHash(survivingBrace)).toBe(secondBraceHash);
+      expect(anchorHash(survivingBrace, file)).toBe(secondBraceHash);
     });
   });
 
@@ -101,8 +101,8 @@ describe("end-to-end via tool: duplicate lines after an edit", () => {
 
       const bLines = lines1.filter((l) => l.endsWith("│b"));
       expect(bLines).toHaveLength(2);
-      const bHash = anchorHash(bLines[0]!);
-      expect(anchorHash(bLines[1]!)).toBe(bHash);
+      const bHash = anchorHash(bLines[0]!, file);
+      expect(anchorHash(bLines[1]!, file)).toBe(bHash);
 
       const aHash = extractHash(lines1.find((l) => l.endsWith("│a"))!);
       const cHash = extractHash(lines1.find((l) => l.endsWith("│c"))!);
@@ -122,7 +122,7 @@ describe("end-to-end via tool: duplicate lines after an edit", () => {
       const lines2 = getText(read2).split("\n");
       const survivingB = lines2.find((l) => l.endsWith("│b"))!;
       expect(survivingB).toBeTruthy();
-      expect(anchorHash(survivingB)).toBe(bHash);
+      expect(anchorHash(survivingB, file)).toBe(bHash);
       expect(survivingB).toMatch(anchorRowRe("b", { line: 1 }));
     });
   });
@@ -137,9 +137,9 @@ describe("end-to-end via tool: duplicate lines after an edit", () => {
 
       const bLines = lines1.filter((l) => l.endsWith("│b"));
       expect(bLines).toHaveLength(3);
-      const bHash = anchorHash(bLines[0]!);
+      const bHash = anchorHash(bLines[0]!, file);
       for (const line of bLines) {
-        expect(anchorHash(line)).toBe(bHash);
+        expect(anchorHash(line, file)).toBe(bHash);
       }
 
       const aHash = extractHash(lines1.find((l) => l.endsWith("│a"))!);
@@ -166,7 +166,7 @@ describe("end-to-end via tool: duplicate lines after an edit", () => {
       const survivingBLines = lines2.filter((l) => l.endsWith("│b"));
       expect(survivingBLines).toHaveLength(2);
       for (const line of survivingBLines) {
-        expect(anchorHash(line)).toBe(bHash);
+        expect(anchorHash(line, file)).toBe(bHash);
       }
     });
   });

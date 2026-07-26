@@ -19,6 +19,7 @@ import {
   applyEdits,
   lineHashes,
   parseEdits,
+  hashDigitsFor,
   type RawEdit,
 } from "./hashline";
 import { toCwd } from "./paths";
@@ -166,7 +167,7 @@ export async function execPipeline(
     path, cwd, signal, accessMode, undefined, MAX_HASH_LINES,
   );
 
-  const resolved = parseEdits(toolEdits);
+  const resolved = parseEdits(toolEdits, hashDigitsFor(originalHashes.length));
   const anchorResult = applyEdits(
     originalNormalized,
     resolved,

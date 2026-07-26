@@ -5,7 +5,7 @@ import {
 	parseEdits,
 	type RawEdit,
 } from "../../src/hashline";
-import { anchorAt, fakeAnchor } from "../support/fixtures";
+import { anchorAt, fakeAnchor, parseEditsIn } from "../support/fixtures";
 
 describe("strict edit input (no autocorrection)", () => {
 	it("rejects a real line:hash| prefix in content with E_BARE_HASH_PREFIX", () => {
@@ -16,7 +16,7 @@ describe("strict edit input (no autocorrection)", () => {
     ];
     let caught: Error | undefined;
 		try {
-			applyEdits(file, parseEdits(toolEdits));
+			applyEdits(file, parseEditsIn(file, toolEdits));
 		} catch (e) {
 			caught = e as Error;
 		}
@@ -31,7 +31,7 @@ describe("strict edit input (no autocorrection)", () => {
         hash_range_inclusive: [fakeAnchor(1), fakeAnchor(1)], content_lines: `+1:ZZ:foo`,
       } as unknown as RawEdit,
     ];
-    expect(() => parseEdits(toolEdits)).toThrow(
+    expect(() => parseEdits(toolEdits, 5)).toThrow(
       /must be a native JSON array of strings, not a JSON string/i,
     );
 	});
@@ -40,14 +40,14 @@ describe("strict edit input (no autocorrection)", () => {
 		const toolEdits: RawEdit[] = [
       { hash_range_inclusive: [fakeAnchor(1), fakeAnchor(1)], content_lines: ["-1    foo"] },
     ];
-    expect(parseEdits(toolEdits)[0]!.content_lines).toEqual(["-1    foo"]);
+    expect(parseEdits(toolEdits, 5)[0]!.content_lines).toEqual(["-1    foo"]);
 	});
 
 	it("accepts plain literal content unchanged", () => {
 		const toolEdits: RawEdit[] = [
       { hash_range_inclusive: [fakeAnchor(1), fakeAnchor(1)], content_lines: ["bar"] },
     ];
-    const resolved = parseEdits(toolEdits);
+    const resolved = parseEdits(toolEdits, 5);
 		expect(resolved).toHaveLength(1);
     expect(resolved[0]!.content_lines).toEqual(["bar"]);
 	});
@@ -56,7 +56,7 @@ describe("strict edit input (no autocorrection)", () => {
 		const toolEdits: RawEdit[] = [
       { hash_range_inclusive: [fakeAnchor(1), fakeAnchor(1)], content_lines: ["# keep me"] },
     ];
-    const resolved = parseEdits(toolEdits);
+    const resolved = parseEdits(toolEdits, 5);
     expect(resolved[0]!.content_lines).toEqual(["# keep me"]);
 	});
 });
@@ -65,7 +65,7 @@ describe("bare-prefix false positives are impossible: only real anchors trigger 
 	const file = "alpha\nbeta\ngamma\ndelta";
 
 	function applyTool(toolEdits: RawEdit[], precomputedHashes?: string[]) {
-		return applyEdits(file, parseEdits(toolEdits), undefined, precomputedHashes);
+		return applyEdits(file, parseEditsIn(file, toolEdits), undefined, precomputedHashes);
 	}
 
 	it("rejects when a content line quotes a real anchor inside the replaced range", () => {

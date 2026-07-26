@@ -41,19 +41,19 @@ function hello() {
 would be returned as:
 
 ```text
-176785│function hello() {
-241458│  console.log("world");
-388536│}
+12643│function hello() {
+23590│  console.log("world");
+34600│}
 ```
 
-- The anchor is the 1-based line number immediately followed by a 5-digit content checksum, with no separator (`176785` is line 1, checksum `76785`). See [Hashing](#hashing) for details.
+- The anchor is the 1-based line number immediately followed by a content checksum, with no separator (`12643` is line 1, checksum `2643`). The checksum is 4 digits in files of ≤99 lines and 5 digits otherwise; blank (or whitespace-only) lines render the line number alone (`42│`). See [Hashing](#hashing) for details.
 
 Optional parameters:
 
 - `offset` -- start reading from this line number (1-indexed).
 - `limit` -- maximum number of lines to return.
 
-Images (JPEG, PNG, GIF, WebP) are passed through as attachments and do not participate in the hashline protocol. Binary and directory paths are rejected with a descriptive error. Empty files are returned as a single empty-line anchor (e.g. `136261│`). Use replace on that anchor to insert content.
+Images (JPEG, PNG, GIF, WebP) are passed through as attachments and do not participate in the hashline protocol. Binary and directory paths are rejected with a descriptive error. Empty files are returned as a single empty-line anchor (`1│`). Use replace on that anchor to insert content.
 
 ### `replace` -- anchor-based modifications
 
@@ -147,7 +147,7 @@ The file is created automatically when any setting is toggled. Both fields are i
 
 ## Hashing
 
-The raw hash is a synchronous 32-bit FNV-1a (`src/hashline/hasher.ts`, ~6 lines, zero dependencies) reduced modulo 100000 to a fixed 5-digit decimal checksum (16.6 bits, 100000 buckets). It renders with no separator before the line number so both fold into a single token on OpenAI's o200k tokenizer (which chunks digit runs by 3), and 5 decimal digits are both cheaper per line and more drift-resistant than the previous 2-char base64 checksum. It is not asked to be globally unique — the line number is the address, the hash only verifies that the content at that address hasn't drifted since it was last read. That reframing is what lets the hash be small, non-cryptographic, and collision-tolerant: two different lines sharing a checksum is harmless, since they're never compared to each other, only to whatever the model claims is at one specific line.
+The raw hash is a synchronous 32-bit FNV-1a (`src/hashline/hasher.ts`, ~6 lines, zero dependencies) reduced modulo 10^N to a fixed-width decimal checksum: N=4 for files of ≤99 lines, N=5 otherwise. The width is a deterministic function of the current file's line count, so both sides always agree on how to split an anchor; if a file crosses the 99-line boundary between a read and a replace, the anchor mis-splits, fails the hash check, and surfaces as a loud E_STALE_ANCHOR — never a silent misparse. It renders with no separator before the line number so both fold into one digit run on OpenAI's o200k tokenizer (which chunks digit runs by 3) — 2 tokens per anchor in small files, 3 in large ones. Blank lines carry no checksum at all: blankness is itself the drift check (the only change a blank line can suffer is becoming non-blank), so they render as the bare line number. It is not asked to be globally unique — the line number is the address, the hash only verifies that the content at that address hasn't drifted since it was last read. That reframing is what lets the hash be small, non-cryptographic, and collision-tolerant: two different lines sharing a checksum is harmless, since they're never compared to each other, only to whatever the model claims is at one specific line.
 
 The alphabet is sized for an LLM consumer. The model tokenizes, it doesn't squint at pixel glyphs, so the human-readability heuristics used by smaller hand-curated alphabets (no G/L/I/O because they look like digits, no vowels so the hash doesn't accidentally spell a word, no hex digits so it can't be confused with `0xFF`) don't apply.
 

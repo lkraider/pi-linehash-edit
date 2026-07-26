@@ -11,7 +11,7 @@ describe("parseEdits", () => {
 		const edits: RawEdit[] = [
       { hash_range_inclusive: [fakeAnchor(1), fakeAnchor(2)], content_lines: ["a", "b"] },
 		];
-		const resolved = parseEdits(edits);
+		const resolved = parseEdits(edits, 5);
 		expect(resolved).toHaveLength(1);
 		expect(resolved[0]).toHaveProperty("hash_range_inclusive");
 		expect(resolved[0]).toHaveProperty("content_lines");
@@ -21,7 +21,7 @@ describe("parseEdits", () => {
 		const edits: RawEdit[] = [
       { hash_range_inclusive: [fakeAnchor(3), fakeAnchor(3)], content_lines: ["new"] },
 		];
-		const resolved = parseEdits(edits);
+		const resolved = parseEdits(edits, 5);
 		expect(resolved).toHaveLength(1);
 		const r = resolved[0] as {
 			hash_range_inclusive: [Anchor, Anchor];
@@ -33,14 +33,14 @@ describe("parseEdits", () => {
 
 	it("throws on replace with no hash_range_inclusive (E_BAD_SHAPE)", () => {
     const edits = [{ content_lines: ["new"] }] as any;
-		expect(() => parseEdits(edits)).toThrow(/^\[E_BAD_SHAPE\]/);
+		expect(() => parseEdits(edits, 5)).toThrow(/^\[E_BAD_SHAPE\]/);
 	});
 
 	it("throws on malformed hash_range_inclusive", () => {
 		const edits: RawEdit[] = [
       { hash_range_inclusive: ["not-valid", "not-valid"], content_lines: ["x"] },
 		];
-		expect(() => parseEdits(edits)).toThrow(/Invalid anchor/);
+		expect(() => parseEdits(edits, 5)).toThrow(/Invalid anchor/);
 	});
 
   it("rejects string content_lines input", () => {
@@ -50,7 +50,7 @@ describe("parseEdits", () => {
         content_lines: "hello\nworld\n",
       } as unknown as RawEdit,
     ];
-    expect(() => parseEdits(edits)).toThrow(
+    expect(() => parseEdits(edits, 5)).toThrow(
       /must be a native JSON array of strings, not a JSON string/i,
     );
   });
@@ -62,7 +62,7 @@ describe("parseEdits", () => {
         content_lines: '["line1", "line2"]'
       } as unknown as RawEdit,
     ];
-    const resolved = parseEdits(edits);
+    const resolved = parseEdits(edits, 5);
     expect(resolved[0]!.content_lines).toEqual(["line1", "line2"]);
   });
 
@@ -73,7 +73,7 @@ describe("parseEdits", () => {
         content_lines: '"just a string"'
       } as unknown as RawEdit,
     ];
-    expect(() => parseEdits(edits)).toThrow(
+    expect(() => parseEdits(edits, 5)).toThrow(
       /must be a native JSON array of strings, not a JSON string/i,
     );
   });
@@ -85,21 +85,21 @@ describe("parseEdits", () => {
         content_lines: null,
 			} as unknown as RawEdit,
 		];
-		expect(() => parseEdits(edits)).toThrow(
+		expect(() => parseEdits(edits, 5)).toThrow(
       /content_lines" must be a string array/i,
 		);
 	});
 
 	it("rejects unknown fields", () => {
     const edits = [{ hash_range_inclusive: [fakeAnchor(1), fakeAnchor(1)], content_lines: ["x"], extra: true }] as any;
-		expect(() => parseEdits(edits)).toThrow(
+		expect(() => parseEdits(edits, 5)).toThrow(
 			/unknown or unsupported fields/i,
 		);
 	});
 
 	it("rejects missing content_lines", () => {
 		const edits = [{ hash_range_inclusive: [fakeAnchor(1), fakeAnchor(1)] }] as any;
-		expect(() => parseEdits(edits)).toThrow(
+		expect(() => parseEdits(edits, 5)).toThrow(
       /requires a "content_lines" field/i,
 		);
 	});

@@ -1,6 +1,7 @@
 import * as Diff from "diff";
 import {
   lineHashes,
+  formatAnchor,
   HASH_SEP,
 } from "./hashline";
 
@@ -30,7 +31,7 @@ export function stripBOM(content: string): { bom: string; text: string } {
 
 function anchorAt(hashes: string[], line: number): string | undefined {
   const hash = hashes[line - 1];
-  return hash === undefined ? undefined : `${line}${hash}`;
+  return hash === undefined ? undefined : formatAnchor(line, hash);
 }
 
 function fmtDiffLine(
