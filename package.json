@@ -2,7 +2,7 @@
   "name": "pi-linehash-edit",
   "version": "1.0.0",
   "type": "module",
-  "description": "Strict read/replace tool for pi-coding-agent with line:hash-anchored edits — position is the address, the hash is only a drift checksum",
+  "description": "Strict, token-efficient read/replace tools for pi-coding-agent — every line addressed by number and verified by a drift checksum; no fuzzy matching, no silent relocation",
   "main": "index.ts",
   "repository": {
     "type": "git",
