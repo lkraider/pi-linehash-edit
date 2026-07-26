@@ -105,6 +105,7 @@ function finishPreview(
 	selectedLines: string[],
 	startLine: number,
 	totalLines: number,
+	forceTruncated = false,
 ): { text: string; truncation?: TruncationResult; nextOffset?: number } {
 	const earlyResult = emptyOrOutOfRangeResult(startLine, totalLines);
 	if (earlyResult) return earlyResult;
@@ -112,7 +113,17 @@ function finishPreview(
 	const endIdx = startLine - 1 + selectedLines.length;
 	const formatted = formatRegion(selectedHashes, selectedLines, startLine);
 
-	const truncation = truncateHead(formatted);
+	let truncation = truncateHead(formatted);
+	if (forceTruncated && !truncation.truncated) {
+		// The streamed path pre-caps its window at DEFAULT_MAX_LINES before
+		// truncateHead ever sees it, so truncateHead's own line-count check
+		// can't fire even though the real file has more lines than shown.
+		// totalLines is corrected to the real file count (already known for
+		// free); totalBytes stays window-relative rather than paying to
+		// format+measure the untruncated remainder, which would defeat the
+		// point of not buffering it.
+		truncation = { ...truncation, truncated: true, truncatedBy: "lines", totalLines };
+	}
 	if (truncation.firstLineExceedsLimit) {
 		return {
 			text: `[Line ${startLine} exceeds ${formatSize(truncation.maxBytes)}. Hashline output requires full lines; cannot compute hashes for a truncated preview.]`,
@@ -171,7 +182,8 @@ export async function fmtReadPreviewStreamed(
 		signal,
 	);
 
-	return finishPreview(selectedHashes, selectedLines, startLine, totalLines);
+	const forceTruncated = limit === undefined && totalLines > DEFAULT_MAX_LINES;
+	return finishPreview(selectedHashes, selectedLines, startLine, totalLines, forceTruncated);
 }
 
 export function regRead(pi: ExtensionAPI): void {

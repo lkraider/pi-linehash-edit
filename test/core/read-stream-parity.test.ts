@@ -76,6 +76,26 @@ describe("streamed read matches whole-file read exactly", () => {
     });
   });
 
+  it("reports the same truncation metadata as the whole-file path for a default (no-limit) read past DEFAULT_MAX_LINES", async () => {
+    const content = manyLines(3000);
+    await withTempFile("huge.txt", content, async ({ path }) => {
+      const oracle = await fmtReadPreview(normalize(content), {}, undefined, path);
+      const streamed = await fmtReadPreviewStreamed(path, {}, undefined);
+
+      expect(streamed.text).toBe(oracle.text);
+      expect(streamed.nextOffset).toBe(oracle.nextOffset);
+      // totalBytes is excluded: the oracle's value counts the byte size of
+      // formatting+hashing the entire untruncated file, which the streamed
+      // path deliberately never buffers or hashes past the window (that's
+      // the whole point of streaming). Every other field — most importantly
+      // truncated/truncatedBy/totalLines, which is what callers act on — must
+      // still match exactly.
+      const { totalBytes: _oracleTotalBytes, ...oracleRest } = oracle.truncation!;
+      const { totalBytes: _streamedTotalBytes, ...streamedRest } = streamed.truncation!;
+      expect(streamedRest).toEqual(oracleRest);
+    });
+  });
+
   it("treats a file containing only a BOM as empty, same as the whole-file path", async () => {
     const content = "﻿";
     await withTempFile("bomonly.txt", content, async ({ path }) => {
