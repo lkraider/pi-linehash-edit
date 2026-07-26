@@ -8,9 +8,9 @@ import {
 	type TruncationResult,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { loadFileKindAndText } from "./file-kind";
-import { readNormFile } from "./file-reader";
-import { lineHashes, formatRegion, HASH_SEP } from "./hashline";
+import { sniffKind, detectUtf8DecodeErrors } from "./file-kind";
+import { streamReadWindow } from "./read-stream";
+import { lineHashes, formatRegion, HASH_SEP, blankHash } from "./hashline";
 import { toCwd } from "./paths";
 import { abortIf } from "./utils";
 import { fileSnap } from "./file-reader";
@@ -55,15 +55,11 @@ export function formatPaginationHint(
 function emptyOrOutOfRangeResult(
 	startLine: number,
 	totalLines: number,
-	text: string,
-	precomputedHashes: string[] | undefined,
 ): { text: string } | null {
 	if (totalLines === 0) {
 		if (startLine === 1) {
-			const allHashes = precomputedHashes ?? lineHashes(text);
-			const emptyLineHash = allHashes[0] ?? "";
 			return {
-				text: `1${emptyLineHash}${HASH_SEP}\n[File is empty. Use replace to insert content.]`,
+				text: `1${blankHash(4)}${HASH_SEP}\n[File is empty. Use replace to insert content.]`,
 			};
 		}
 		return {
@@ -104,27 +100,17 @@ function appendPaginationHint(
 	return { preview, nextOffset: undefined };
 }
 
-export async function fmtReadPreview(
-	text: string,
-	options: { offset?: number; limit?: number },
-	precomputedHashes?: string[],
-	_path?: string,
-): Promise<{ text: string; truncation?: TruncationResult; nextOffset?: number }> {
-	const allLines = visLines(text);
-	const totalLines = allLines.length;
-	const startLine = normPosInt(options.offset, "offset") ?? 1;
-
-	const earlyResult = emptyOrOutOfRangeResult(startLine, totalLines, text, precomputedHashes);
+function finishPreview(
+	selectedHashes: string[],
+	selectedLines: string[],
+	startLine: number,
+	totalLines: number,
+): { text: string; truncation?: TruncationResult; nextOffset?: number } {
+	const earlyResult = emptyOrOutOfRangeResult(startLine, totalLines);
 	if (earlyResult) return earlyResult;
 
-	const limit = normPosInt(options.limit, "limit");
-	const endIdx = limit
-		? Math.min(startLine - 1 + limit, totalLines)
-		: totalLines;
-	const selected = allLines.slice(startLine - 1, endIdx);
-	const allHashes = precomputedHashes ?? lineHashes(text);
-	const selectedHashes = allHashes.slice(startLine - 1, endIdx);
-	const formatted = formatRegion(selectedHashes, selected, startLine);
+	const endIdx = startLine - 1 + selectedLines.length;
+	const formatted = formatRegion(selectedHashes, selectedLines, startLine);
 
 	const truncation = truncateHead(formatted);
 	if (truncation.firstLineExceedsLimit) {
@@ -147,6 +133,45 @@ export async function fmtReadPreview(
 		truncation: truncation.truncated ? truncation : undefined,
 		...(nextOffset !== undefined ? { nextOffset } : {}),
 	};
+}
+
+export async function fmtReadPreview(
+	text: string,
+	options: { offset?: number; limit?: number },
+	precomputedHashes?: string[],
+	_path?: string,
+): Promise<{ text: string; truncation?: TruncationResult; nextOffset?: number }> {
+	const allLines = visLines(text);
+	const totalLines = allLines.length;
+	const startLine = normPosInt(options.offset, "offset") ?? 1;
+
+	const limit = normPosInt(options.limit, "limit");
+	const endIdx = limit
+		? Math.min(startLine - 1 + limit, totalLines)
+		: totalLines;
+	const selected = allLines.slice(startLine - 1, endIdx);
+	const allHashes = precomputedHashes ?? lineHashes(text);
+	const selectedHashes = allHashes.slice(startLine - 1, endIdx);
+
+	return finishPreview(selectedHashes, selected, startLine, totalLines);
+}
+
+export async function fmtReadPreviewStreamed(
+	absolutePath: string,
+	options: { offset?: number; limit?: number },
+	signal?: AbortSignal,
+): Promise<{ text: string; truncation?: TruncationResult; nextOffset?: number }> {
+	const startLine = normPosInt(options.offset, "offset") ?? 1;
+	const limit = normPosInt(options.limit, "limit");
+
+	const { totalLines, selectedLines, selectedHashes } = await streamReadWindow(
+		absolutePath,
+		startLine,
+		limit,
+		signal,
+	);
+
+	return finishPreview(selectedHashes, selectedLines, startLine, totalLines);
 }
 
 export function regRead(pi: ExtensionAPI): void {
@@ -182,8 +207,8 @@ export function regRead(pi: ExtensionAPI): void {
 			await validateAccess(absolutePath, rawPath);
 
 			abortIf(signal);
-			const file = await loadFileKindAndText(absolutePath);
-			if (file.kind === "image") {
+			const kind = await sniffKind(absolutePath);
+			if (kind.kind === "image") {
 				const builtinRead = createReadTool(ctx.cwd);
 				const executeBuiltinRead = builtinRead.execute as unknown as (
 					toolCallId: string,
@@ -194,24 +219,29 @@ export function regRead(pi: ExtensionAPI): void {
 				) => ReturnType<typeof builtinRead.execute>;
 				return executeBuiltinRead(_toolCallId, params, signal, _onUpdate, ctx);
 			}
-			const { normalized, fileHashes, hadUtf8DecodeErrors } = await readNormFile(
-				rawPath, ctx.cwd, signal, undefined, file,
-			);
-			const preview = await fmtReadPreview(
-				normalized,
-				{
-					offset: params.offset,
-					limit: params.limit,
-				},
-				fileHashes,
-				absolutePath,
-			);
+			if (kind.kind === "directory") {
+				throw new Error(`Path is a directory: ${rawPath}. Use ls to inspect directories.`);
+			}
+			if (kind.kind === "binary") {
+				throw new Error(`Path is a binary file: ${rawPath} (${kind.description}). Hashline edit only supports text files.`);
+			}
+
+			const [preview, hadUtf8DecodeErrors] = await Promise.all([
+				fmtReadPreviewStreamed(
+					absolutePath,
+					{
+						offset: params.offset,
+						limit: params.limit,
+					},
+					signal,
+				),
+				detectUtf8DecodeErrors(absolutePath, signal),
+			]);
 			const snapshot = await fileSnap(absolutePath);
 
-			const previewText =
-				hadUtf8DecodeErrors
-					? `${preview.text}\n\n[Non-UTF-8 bytes shown as U+FFFD; editing rewrites the file as UTF-8.]`
-					: preview.text;
+			const previewText = hadUtf8DecodeErrors
+				? `${preview.text}\n\n[Non-UTF-8 bytes shown as U+FFFD; editing rewrites the file as UTF-8.]`
+				: preview.text;
 
 			return {
 				content: [{ type: "text", text: previewText }],

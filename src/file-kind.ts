@@ -1,6 +1,8 @@
 import { open as fsOpen, stat as fsStat } from "fs/promises";
+import { createReadStream } from "fs";
 import { fileTypeFromBuffer } from "file-type";
 import { SNIFF_BYTES, MAX_BYTES } from "./constants";
+import { abortIf } from "./utils";
 
 const IMG_TYPES = new Set<string>([
   "image/jpeg",
@@ -25,6 +27,92 @@ export type LFile =
   | { kind: "text"; text: string; hadUtf8DecodeErrors?: true }
   | { kind: "binary"; description: string };
 
+export type SniffedKind =
+  | { kind: "directory" }
+  | { kind: "image"; mimeType: string }
+  | { kind: "binary"; description: string }
+  | { kind: "text" };
+
+export async function sniffKind(filePath: string): Promise<SniffedKind> {
+  const pathStat = await fsStat(filePath);
+  if (pathStat.isDirectory()) {
+    return { kind: "directory" };
+  }
+  if (!pathStat.isFile()) {
+    return {
+      kind: "binary",
+      description: "unsupported file type",
+    };
+  }
+  if (pathStat.size > MAX_BYTES) {
+    return {
+      kind: "binary",
+      description: `file exceeds ${MAX_BYTES} byte limit`,
+    };
+  }
+
+  const fileHandle = await fsOpen(filePath, "r");
+  try {
+    const buffer = Buffer.alloc(SNIFF_BYTES);
+    const { bytesRead } = await fileHandle.read(buffer, 0, SNIFF_BYTES, 0);
+    if (bytesRead === 0) {
+      return { kind: "text" };
+    }
+
+    const sample = buffer.subarray(0, bytesRead);
+    const detectedMimeType = (await fileTypeFromBuffer(sample))?.mime;
+    if (detectedMimeType !== undefined && !isTextType(detectedMimeType)) {
+      if (IMG_TYPES.has(detectedMimeType)) {
+        return { kind: "image", mimeType: detectedMimeType };
+      }
+      return {
+        kind: "binary",
+        description: detectedMimeType,
+      };
+    }
+
+    return { kind: "text" };
+  } finally {
+    await fileHandle.close();
+  }
+}
+
+export async function detectUtf8DecodeErrors(
+  filePath: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const fatalDecoder = new TextDecoder("utf-8", { fatal: true });
+  const stream = createReadStream(filePath);
+  let hadUtf8DecodeErrors = false;
+  try {
+    for await (const chunk of stream) {
+      abortIf(signal);
+      try {
+        fatalDecoder.decode(chunk as Buffer, { stream: true });
+      } catch (error: unknown) {
+        if (error instanceof TypeError) {
+          hadUtf8DecodeErrors = true;
+          break;
+        }
+        throw error;
+      }
+    }
+    if (!hadUtf8DecodeErrors) {
+      try {
+        fatalDecoder.decode();
+      } catch (error: unknown) {
+        if (error instanceof TypeError) {
+          hadUtf8DecodeErrors = true;
+        } else {
+          throw error;
+        }
+      }
+    }
+  } finally {
+    stream.destroy();
+  }
+  return hadUtf8DecodeErrors;
+}
 
 export async function loadFileKindAndText(
   filePath: string,
