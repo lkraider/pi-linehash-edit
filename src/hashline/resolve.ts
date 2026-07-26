@@ -192,7 +192,7 @@ export function assertNoBarePrefix(
   const exampleLine = suspects[0]!.line;
 
   throw new Error(
-    `[E_BARE_HASH_PREFIX] ${suspects.length} edit line(s) are read/diff rows copied back as content — each starts with a real file-line anchor and either targets the replaced range or duplicates that line verbatim (${locations}). Example: ${JSON.stringify(exampleLine)}. Remove the "line:hash│" prefix from each affected content_lines entry; keep only the literal line content that appears after "│". Remember: content_lines uses file content only, hash_range_inclusive uses anchors.`
+    `[E_BARE_HASH_PREFIX] ${suspects.length} edit line(s) are read/diff rows copied back as content — each starts with a real file-line anchor and either targets the replaced range or duplicates that line verbatim (${locations}). Example: ${JSON.stringify(exampleLine)}. Remove the "line:hash│" prefix from each affected content_lines entry; keep only the literal line content that appears after "│". Remember: content_lines uses file content only, hash_range_inclusive uses anchors. To move or relocate existing lines, do not paste their rows: delete the source range (content_lines: []) and write the literal lines at the destination in the same replace call.`
   );
 }
 
