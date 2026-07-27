@@ -18,7 +18,7 @@ function positive(value: number | undefined, name: string): number | undefined {
   return value;
 }
 
-export function formatPaginationHint(start: number, end: number, total: number, next: number, byteLimit?: number): string {
+function formatPaginationHint(start: number, end: number, total: number, next: number, byteLimit?: number): string {
   return `[Showing lines ${start}-${end} of ${total}${byteLimit ? ` (${formatSize(byteLimit)} limit)` : ""}. Use offset=${next} to continue.]`;
 }
 
@@ -56,7 +56,7 @@ export function regRead(pi: ExtensionAPI): void {
       if (kind.kind === "binary") throw new Error(`Path is a binary file: ${path} (${kind.description}).`);
       const preview = await fmtReadPreviewStreamed(absolute, { offset: params.offset, limit: params.limit }, signal);
       const text = preview.hadUtf8DecodeErrors ? `${preview.text}\n\n[Non-UTF-8 bytes shown as U+FFFD; editing rewrites as UTF-8.]` : preview.text;
-      return { content: [{ type: "text" as const, text }], details: { truncation: preview.truncation, snapshot: preview.snapshot, ...(preview.nextOffset ? { nextOffset: preview.nextOffset } : {}), metrics: { truncated: !!preview.truncation } } };
+      return { content: [{ type: "text" as const, text }], details: preview.truncation ? { truncation: preview.truncation } : undefined };
     }
   });
 }
