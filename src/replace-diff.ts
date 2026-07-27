@@ -2,8 +2,6 @@ import * as Diff from "diff";
 import { MAX_DIFF_LINES } from "./constants";
 
 export function shouldSkipDiff(oldLines: number, newLines: number): boolean { return oldLines > MAX_DIFF_LINES || newLines > MAX_DIFF_LINES; }
-export function detectEnding(content: string): "\r\n" | "\n" { const crlf = content.indexOf("\r\n"), lf = content.indexOf("\n"); return lf !== -1 && crlf !== -1 && crlf === lf ? "\r\n" : "\n"; }
-export function toLF(text: string): string { return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n"); }
 export function restoreEndings(text: string, ending: "\r\n" | "\n"): string { return ending === "\r\n" ? text.replace(/\n/g, "\r\n") : text; }
 export function stripBOM(content: string): { bom: string; text: string } { return content.startsWith("\uFEFF") ? { bom: "\uFEFF", text: content.slice(1) } : { bom: "", text: content }; }
 export interface EndingAnalysis { normalized: string; originalEnding: "\r\n" | "\n"; hadMixedEndings: boolean }

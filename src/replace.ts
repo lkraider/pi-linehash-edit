@@ -63,7 +63,7 @@ export function buildToolDef(opts: { autoRead?: boolean } = {}): ToolDefinition<
         const meta: RMeta = { editsAttempted: params.changes.length, noopEditsCount: p.noopEdits?.length ?? 0, firstChangedLine: p.firstChangedLine, lastChangedLine: p.lastChangedLine, changedRegions: p.changedRegions, addedLines: p.totalAddedLines, removedLines: p.totalRemovedLines };
         if (p.originalNormalized === p.result) return buildNoop({ path: p.path, snapshot: p.initialSnapshot, editMeta: meta, warnings: p.warnings, noopEdits: p.noopEdits });
         abortIf(signal);
-        const current = await readSnapshot(target, target);
+        const current = await readSnapshot(target, target, signal);
         if (!sameSnapshot(params.snapshot, current.snapshot)) throw new Error(`[E_STALE_SNAPSHOT] ${p.path} changed during replace; nothing was written.`);
         await writeAtomic(absolute, p.rawOutput, target);
         const next = snapshotTag(target, Buffer.from(p.rawOutput));

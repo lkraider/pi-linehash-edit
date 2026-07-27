@@ -2,9 +2,6 @@ export function isRec(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function has(record: Record<string, unknown>, key: string): boolean {
-	return Object.hasOwn(record, key);
-}
 
 export function visLines(text: string): string[] {
   if (text.length === 0) return [];
@@ -37,19 +34,6 @@ export function rejectUnknownFields(
   }
 }
 
-export function cntDiff(diff: string, marker: "+" | "-"): number {
-  if (!diff) return 0;
-  let count = 0;
-  for (const line of diff.split("\n")) {
-    if (
-      line.startsWith(marker) &&
-      !line.startsWith(`${marker}${marker}${marker}`)
-    ) {
-      count += 1;
-    }
-  }
-  return count;
-}
 
 export function abortIf(signal?: AbortSignal): void {
   if (signal?.aborted) throw new Error("Operation aborted");
@@ -62,26 +46,10 @@ export function errCode(error: unknown): string | undefined {
 	return undefined;
 }
 
-export function lastNonEmptyIndex(lines: string[]): number {
-	for (let i = lines.length - 1; i >= 0; i--) {
-		if (lines[i]!.length > 0) return i;
-	}
-	return -1;
-}
-
-export function firstNonEmptyIndex(lines: string[]): number {
-	for (let i = 0; i < lines.length; i++) {
-		if (lines[i]!.length > 0) return i;
-	}
-	return -1;
-}
-
 export function lastNonEmpty(lines: string[]): string | undefined {
-	const idx = lastNonEmptyIndex(lines);
-	return idx >= 0 ? lines[idx] : undefined;
+  for (let i = lines.length - 1; i >= 0; i--) if (lines[i]!.length) return lines[i];
 }
 
 export function firstNonEmpty(lines: string[]): string | undefined {
-	const idx = firstNonEmptyIndex(lines);
-	return idx >= 0 ? lines[idx] : undefined;
+  return lines.find(line => line.length > 0);
 }

@@ -1,6 +1,5 @@
 import { constants } from "fs";
 import { access as fsAccess } from "fs/promises";
-import type { LFile } from "./file-kind";
 import { errCode } from "./utils";
 
 export async function validateAccess(
@@ -23,16 +22,5 @@ export async function validateAccess(
 	}
 }
 
-export function validateKind(file: LFile, path: string): asserts file is { kind: "text"; text: string; hadUtf8DecodeErrors?: true } {
-	if (file.kind === "directory") {
-		throw new Error(`Path is a directory: ${path}. Use ls to inspect directories.`);
-	}
-	if (file.kind === "binary") {
-		throw new Error(`Path is a binary file: ${path} (${file.description}). Hashline edit only supports text files.`);
-	}
-	if (file.kind === "image") {
-		throw new Error(`Path is an image file: ${path}. Hashline edit only supports text files.`);
-	}
-}
 
 

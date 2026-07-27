@@ -20,7 +20,7 @@ export async function readNormFile(path: string, cwd: string, signal?: AbortSign
   const absolute = toCwd(path, cwd);
   const target = resolvedAbsolutePath;
   abortIf(signal);
-  const observation = await readSnapshot(absolute, target);
+  const observation = await readSnapshot(absolute, target, signal);
   await validateAccess(observation.canonicalPath, path, accessMode);
   abortIf(signal);
   if (observation.raw.length > MAX_BYTES) throw new Error(`[E_FILE_TOO_LARGE] ${path} exceeds the ${MAX_BYTES}-byte edit limit.`);
