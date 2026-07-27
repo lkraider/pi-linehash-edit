@@ -153,7 +153,9 @@ describe("replace guard", () => {
     const tool = buildToolDef() as any;
     await expect(tool.execute("id", { path: "x", changes: [{ range: [1, 1], content_lines: [] }] }, undefined, undefined, { cwd: "." })).rejects.toThrow("E_BAD_SNAPSHOT");
     await expect(tool.execute("id", { path: "x", snapshot: "s2:bad", changes: [{ range: [1, 1], content_lines: [] }] }, undefined, undefined, { cwd: "." })).rejects.toThrow("E_BAD_SNAPSHOT");
-    await expect(tool.execute("id", { path: "x", changes: [{ hash_range_inclusive: ["1", "1"], content_lines: [] }] }, undefined, undefined, { cwd: "." })).rejects.toThrow("E_LEGACY_SHAPE");
+    const legacy = { path: "x", changes: [{ hash_range_inclusive: ["1", "1"], content_lines: [] }] };
+    expect(() => tool.prepareArguments(legacy)).toThrow("E_LEGACY_SHAPE");
+    await expect(tool.execute("id", legacy, undefined, undefined, { cwd: "." })).rejects.toThrow("E_LEGACY_SHAPE");
   });
 });
 

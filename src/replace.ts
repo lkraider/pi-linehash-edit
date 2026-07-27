@@ -13,18 +13,24 @@ import { MAX_BYTES, MAX_EDIT_LINES } from "./constants";
 import { buildChanged, buildNoop, type RMeta, type RMetrics } from "./replace-response";
 import { loadP, loadGuide } from "./prompts";
 
-const contentLines = Type.Array(Type.String(), { description: "literal replacement lines without line│ prefixes" });
+const contentLines = Type.Array(Type.String({ pattern: "^[^\\r\\n]*$" }), { description: "literal replacement lines without line│ prefixes" });
 const range = Type.Array(Type.Integer({ minimum: 1 }), { minItems: 2, maxItems: 2, description: "inclusive numeric [start, end]" });
 const change = Type.Object({ range, content_lines: contentLines }, { additionalProperties: false });
-export const editToolSchema = Type.Object({ path: Type.String(), snapshot: Type.String(), changes: Type.Array(change, { minItems: 1 }) }, { additionalProperties: false });
+export const editToolSchema = Type.Object({ path: Type.String(), snapshot: Type.String({ pattern: "^s2:[A-Za-z0-9_-]{22}$" }), changes: Type.Array(change, { minItems: 1 }) }, { additionalProperties: false });
 export type ReqParams = { path: string; snapshot: string; changes: RawEdit[] };
 export type ReplaceDetails = { diff: string; firstChangedLine?: number; changedRegions?: { first: number; last: number }[]; snapshot?: string; snapshotId?: string; classification?: "noop"; metrics?: RMetrics };
 type PipelineResult = { path: string; originalNormalized: string; result: string; rawOutput: string; warnings: string[]; noopEdits?: { editIndex: number; loc: string; currentContent: string }[]; firstChangedLine?: number; lastChangedLine?: number; changedRegions: { first: number; last: number }[]; totalAddedLines: number; totalRemovedLines: number; initialSnapshot: string };
 const ROOT = new Set(["path", "snapshot", "changes"]);
 
+function assertNotLegacy(request: unknown): void {
+  if (isRec(request) && ("hash_range_inclusive" in request || Array.isArray(request.changes) && request.changes.some(c => isRec(c) && "hash_range_inclusive" in c))) {
+    throw new Error('[E_LEGACY_SHAPE] "hash_range_inclusive" is obsolete. Use snapshot plus numeric range.');
+  }
+}
+
 export function assertReq(request: unknown): asserts request is ReqParams {
+  assertNotLegacy(request);
   if (!isRec(request)) throw new Error("[E_BAD_SHAPE] Replace request must be an object.");
-  if ("hash_range_inclusive" in request || Array.isArray(request.changes) && request.changes.some(c => isRec(c) && "hash_range_inclusive" in c)) throw new Error('[E_LEGACY_SHAPE] "hash_range_inclusive" is obsolete. Use snapshot plus numeric range.');
   rejectUnknownFields(request, ROOT, "Replace request");
   if (typeof request.path !== "string" || !request.path) throw new Error('[E_BAD_SHAPE] Replace requires non-empty "path".');
   assertSnapshot(request.snapshot);
@@ -56,6 +62,7 @@ export async function compPreview(request: unknown, cwd: string): Promise<{ diff
 export function buildToolDef(opts: { autoRead?: boolean } = {}): ToolDefinition<any, ReplaceDetails> {
   const guidance = opts.autoRead ? "A fresh snapshot is returned automatically." : "Read again for follow-up edits.";
   return { name: "replace", label: "Replace", description: loadP("../prompts/replace.md", { AUTO_READ_GUIDANCE: guidance }), promptSnippet: loadP("../prompts/replace-snippet.md"), promptGuidelines: loadGuide("../prompts/replace-guidelines.md", { AUTO_READ_GUIDANCE: guidance }), parameters: editToolSchema,
+    prepareArguments(args) { assertNotLegacy(args); return args as any; },
     async execute(_id, params, signal, _update, ctx) {
       assertReq(params); const absolute = toCwd(params.path, ctx.cwd), target = await resolveTarget(absolute);
       return withFileMutationQueue(target, async () => {
