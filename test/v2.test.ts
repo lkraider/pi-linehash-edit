@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { chmod, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat, symlink, truncate, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { snapshotTag, readSnapshot } from "../src/snapshot";
@@ -8,6 +8,8 @@ import { fmtReadPreviewStreamed } from "../src/read";
 import { buildToolDef, execPipeline } from "../src/replace";
 import { genDiff } from "../src/replace-diff";
 import { sparsePreview, sparseRows } from "../index";
+import { toCwd } from "../src/paths";
+import { MAX_BYTES } from "../src/constants";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } from "@earendil-works/pi-coding-agent";
 
 const snapshotHook = vi.hoisted(() => ({ beforeRead: undefined as undefined | (() => void | Promise<void>) }));
@@ -37,6 +39,17 @@ describe("snapshot v2", () => {
     const { dir, path } = await fixture("same", "a.txt");
     const other = join(dir, "b.txt"); await writeFile(other, "same");
     expect((await readSnapshot(path)).snapshot).not.toBe((await readSnapshot(other)).snapshot);
+  });
+
+  it("rejects oversized snapshots before reading file contents", async () => {
+    const { path } = await fixture("");
+    await truncate(path, MAX_BYTES + 1);
+    await expect(readSnapshot(path)).rejects.toThrow("E_FILE_TOO_LARGE");
+  });
+
+  it("normalizes model-added path prefixes", () => {
+    expect(toCwd("@file.txt", "/tmp")).toBe("/tmp/file.txt");
+    expect(toCwd("@/tmp/file.txt", "/elsewhere")).toBe("/tmp/file.txt");
   });
 
   it("binds symlink and target to one canonical mutation target", async () => {

@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { open, stat } from "node:fs/promises";
 import { resolveTarget } from "./fs-write";
+import { MAX_BYTES } from "./constants";
 import { abortIf, errCode } from "./utils";
 
 const DOMAIN = Buffer.from("pi-linehash-edit\0snapshot-v2\0");
@@ -43,7 +44,9 @@ export async function readSnapshot(path: string, canonicalPath?: string, signal?
     const handle = await open(target, "r");
     try {
       const before = await handle.stat({ bigint: true });
+      if (before.size > BigInt(MAX_BYTES)) throw new Error(`[E_FILE_TOO_LARGE] ${path} exceeds the ${MAX_BYTES}-byte limit.`);
       const raw = await handle.readFile();
+      if (raw.length > MAX_BYTES) throw new Error(`[E_FILE_TOO_LARGE] ${path} exceeds the ${MAX_BYTES}-byte limit.`);
       const after = await handle.stat({ bigint: true });
       let live;
       try { live = await stat(target, { bigint: true }); }

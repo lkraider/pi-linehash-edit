@@ -1,7 +1,6 @@
 import { constants } from "node:fs";
 import { readSnapshot } from "./snapshot";
 import { classifyBytes } from "./file-kind";
-import { MAX_BYTES } from "./constants";
 import { toCwd } from "./paths";
 import { analyzeEndings, stripBOM } from "./replace-diff";
 import { abortIf, visLineCount } from "./utils";
@@ -18,12 +17,10 @@ export interface NormFile {
 
 export async function readNormFile(path: string, cwd: string, signal?: AbortSignal, accessMode = constants.R_OK, maxLines?: number, resolvedAbsolutePath?: string): Promise<NormFile> {
   const absolute = toCwd(path, cwd);
-  const target = resolvedAbsolutePath;
   abortIf(signal);
-  const observation = await readSnapshot(absolute, target, signal);
+  const observation = await readSnapshot(absolute, resolvedAbsolutePath, signal);
   await validateAccess(observation.canonicalPath, path, accessMode);
   abortIf(signal);
-  if (observation.raw.length > MAX_BYTES) throw new Error(`[E_FILE_TOO_LARGE] ${path} exceeds the ${MAX_BYTES}-byte edit limit.`);
   const kind = await classifyBytes(observation.raw);
   if (kind.kind !== "text") throw new Error(`Path is not a text file: ${path}.`);
   const decoder = new TextDecoder("utf-8", { ignoreBOM: true });

@@ -16,6 +16,7 @@ export function configPath(): string {
 }
 
 function expand(filePath: string): string {
+  if (filePath.startsWith("@")) filePath = filePath.slice(1);
   const home = homeBase();
   if (filePath === "~") return home;
   if (filePath.startsWith("~/")) return home + filePath.slice(1);
