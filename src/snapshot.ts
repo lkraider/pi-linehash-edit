@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
-import { open } from "node:fs/promises";
+import { open, stat } from "node:fs/promises";
 import { resolveTarget } from "./fs-write";
 import { abortIf } from "./utils";
 
@@ -42,8 +42,9 @@ export async function readSnapshot(path: string, canonicalPath?: string, signal?
       const before = await handle.stat({ bigint: true });
       const raw = await handle.readFile();
       const after = await handle.stat({ bigint: true });
+      const live = await stat(target, { bigint: true });
       abortIf(signal);
-      if (before.dev === after.dev && before.ino === after.ino && before.size === after.size && before.mtimeNs === after.mtimeNs && before.ctimeNs === after.ctimeNs) {
+      if (before.dev === after.dev && before.ino === after.ino && before.size === after.size && before.mtimeNs === after.mtimeNs && before.ctimeNs === after.ctimeNs && after.dev === live.dev && after.ino === live.ino && after.size === live.size && after.mtimeNs === live.mtimeNs && after.ctimeNs === live.ctimeNs) {
         return { canonicalPath: target, raw, snapshot: snapshotTag(target, raw) };
       }
     } finally { await handle.close(); }
