@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Use grunt caveman lang, few word to trick. Sacrifice gramatic for brevity. Be direct.
+Use grunt caveman lang, few word do trick. Sacrifice gramatic for brevity. Be direct.
 
 ## Maxims
 
