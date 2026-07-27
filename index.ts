@@ -10,9 +10,7 @@ import { AUTO_READ_MAX, AUTO_READ_CONTEXT } from "./src/constants";
 export type Region = { first: number; last: number };
 
 export function sparseRows(lineCount: number, regions: Region[], cap = AUTO_READ_MAX, context = AUTO_READ_CONTEXT, cost: (row: number) => number = () => 0, byteCap = Infinity): { rows: number[]; omitted: Region[] } {
-  const normalized = regions.map(r => ({ first: Math.max(1, Math.min(lineCount, r.first)), last: Math.max(1, Math.min(lineCount, r.last)) })).filter(r => r.first <= r.last);
-  const mandatory: number[] = [];
-  for (const r of normalized) for (let n = r.first; n <= r.last; n++) mandatory.push(n);
+  const normalized = regions.map(r => ({ first: Math.max(1, Math.min(lineCount, r.first)), last: Math.max(1, Math.min(lineCount, r.last)) })).filter(r => r.first <= r.last).sort((a, b) => a.first - b.first);
   const selected = new Set<number>();
   let bytes = 0;
   const add = (row: number) => {
@@ -21,7 +19,7 @@ export function sparseRows(lineCount: number, regions: Region[], cap = AUTO_READ
     if (selected.size >= cap || bytes + size > byteCap) return false;
     selected.add(row); bytes += size; return true;
   };
-  for (const row of [...new Set(mandatory)].sort((a, b) => a - b)) add(row);
+  for (const region of normalized) for (let row = region.first; row <= region.last; row++) if (!add(row) && selected.size >= cap) break;
   const omitted = normalized.filter(r => { for (let n = r.first; n <= r.last; n++) if (!selected.has(n)) return true; return false; });
   for (let distance = 1; distance <= context && selected.size < cap; distance++) for (const after of [false, true]) {
     for (const region of normalized) {
@@ -61,9 +59,10 @@ export default function (pi: ExtensionAPI): void {
     if (!autoRead || event.isError || event.toolName !== "replace" && event.toolName !== "write") return;
     const path = isRec(event.input) && typeof event.input.path === "string" ? event.input.path : undefined;
     if (!path) return;
+    const details = isRec((event as { details?: unknown }).details) ? (event as { details: Record<string, unknown> }).details : undefined;
+    if (details?.classification === "noop") return;
     try {
       const file = await readNormFile(path, ctx.cwd);
-      const details = isRec((event as { details?: unknown }).details) ? (event as { details: Record<string, unknown> }).details : undefined;
       const rawRegions = details?.changedRegions;
       const regions: Region[] = Array.isArray(rawRegions) ? rawRegions.filter(isRec).map(r => ({ first: Number(r.first), last: Number(r.last) })).filter(r => Number.isInteger(r.first) && Number.isInteger(r.last)) : [{ first: 1, last: Math.min(AUTO_READ_MAX, Math.max(1, visLines(file.normalized).length)) }];
       return { content: [...(event.content ?? []), { type: "text" as const, text: `\n\n--- Auto-read ---\n${sparsePreview(file.normalized, file.snapshot, regions)}` }] };
