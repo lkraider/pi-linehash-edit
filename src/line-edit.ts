@@ -1,5 +1,5 @@
-import { CONTENT_LINES_NOT_STRING_MSG } from "../constants";
-import { abortIf, firstNonEmpty, isRec, lastNonEmpty, rejectUnknownFields, visLines } from "../utils";
+import { CONTENT_LINES_NOT_STRING_MSG } from "./constants";
+import { abortIf, firstNonEmpty, isRec, lastNonEmpty, rejectUnknownFields, visLines } from "./utils";
 
 export type RawEdit = { range: [number, number]; content_lines: string[] };
 type ParsedEdit = RawEdit;
@@ -19,7 +19,6 @@ export function parseEdits(edits: RawEdit[]): ParsedEdit[] {
   return edits.map((raw, index) => {
     if (!isRec(raw)) throw new Error(`[E_BAD_SHAPE] Edit ${index} must be an object.`);
     const edit = raw;
-    if ("hash_range_inclusive" in edit) throw new Error('[E_LEGACY_SHAPE] "hash_range_inclusive" is obsolete. Use numeric "range": [start, end] plus the whole-file snapshot.');
     rejectUnknownFields(edit, KEYS, `Edit ${index}`, "Each edit takes only { range, content_lines }.");
     if (!Array.isArray(edit.content_lines) || !edit.content_lines.every(line => typeof line === "string")) {
       if (typeof edit.content_lines === "string") throw new Error(CONTENT_LINES_NOT_STRING_MSG);

@@ -3,7 +3,7 @@ import { createReadTool, formatSize, DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, trunc
 import { Type } from "typebox";
 import { sniffKind } from "./file-kind";
 import { streamReadWindow } from "./read-stream";
-import { formatRegion } from "./hashline";
+import { formatRegion } from "./line-edit";
 import { toCwd } from "./paths";
 import { abortIf } from "./utils";
 import { loadP, loadGuide } from "./prompts";

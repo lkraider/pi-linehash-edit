@@ -3,7 +3,7 @@ import { regReplace } from "./src/replace";
 import { regRead } from "./src/read";
 import { readConfig, toggleAutoRead } from "./src/config";
 import { readNormFile } from "./src/file-reader";
-import { formatRegion } from "./src/hashline";
+import { formatRegion } from "./src/line-edit";
 import { visLines, isRec } from "./src/utils";
 import { AUTO_READ_MAX, AUTO_READ_CONTEXT } from "./src/constants";
 

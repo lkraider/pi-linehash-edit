@@ -3,7 +3,7 @@ import { chmod, mkdtemp, readFile, rm, stat, symlink, truncate, writeFile } from
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { snapshotTag, readSnapshot } from "../src/snapshot";
-import { applyEdits, parseEdits } from "../src/hashline";
+import { applyEdits, parseEdits } from "../src/line-edit";
 import { fmtReadPreviewStreamed } from "../src/read";
 import { buildToolDef, execPipeline } from "../src/replace";
 import { genDiff } from "../src/replace-diff";
@@ -20,7 +20,7 @@ vi.mock("../src/snapshot", async importOriginal => {
 
 const dirs: string[] = [];
 async function fixture(content: string | Buffer, name = "file.txt") {
-  const dir = await mkdtemp(join(tmpdir(), "linehash-v2-")); dirs.push(dir);
+  const dir = await mkdtemp(join(tmpdir(), "snapshot-edit-")); dirs.push(dir);
   const path = join(dir, name); await writeFile(path, content); return { dir, path };
 }
 afterEach(async () => { await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true }))); });
@@ -164,13 +164,10 @@ describe("replace guard", () => {
     expect(await readFile(mixed.path, "utf8")).toBe("A\r\nb\r\n");
   });
 
-  it("rejects missing, malformed, and legacy guards", async () => {
+  it("rejects missing and malformed snapshots", async () => {
     const tool = buildToolDef() as any;
     await expect(tool.execute("id", { path: "x", changes: [{ range: [1, 1], content_lines: [] }] }, undefined, undefined, { cwd: "." })).rejects.toThrow("E_BAD_SNAPSHOT");
     await expect(tool.execute("id", { path: "x", snapshot: "s2:bad", changes: [{ range: [1, 1], content_lines: [] }] }, undefined, undefined, { cwd: "." })).rejects.toThrow("E_BAD_SNAPSHOT");
-    const legacy = { path: "x", changes: [{ hash_range_inclusive: ["1", "1"], content_lines: [] }] };
-    expect(() => tool.prepareArguments(legacy)).toThrow("E_LEGACY_SHAPE");
-    await expect(tool.execute("id", legacy, undefined, undefined, { cwd: "." })).rejects.toThrow("E_LEGACY_SHAPE");
   });
 });
 

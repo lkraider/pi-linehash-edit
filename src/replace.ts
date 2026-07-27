@@ -5,7 +5,7 @@ import { constants } from "node:fs";
 import { readNormFile } from "./file-reader";
 import { restoreEndings, genDiff, shouldSkipDiff } from "./replace-diff";
 import { resolveTarget, writeAtomic } from "./fs-write";
-import { applyEdits, parseEdits, type RawEdit } from "./hashline";
+import { applyEdits, parseEdits, type RawEdit } from "./line-edit";
 import { toCwd } from "./paths";
 import { readSnapshot, assertSnapshot, sameSnapshot, snapshotTag } from "./snapshot";
 import { isRec, rejectUnknownFields, abortIf, visLineCount } from "./utils";
@@ -22,14 +22,8 @@ export type ReplaceDetails = { diff: string; firstChangedLine?: number; changedR
 type PipelineResult = { path: string; originalNormalized: string; result: string; rawOutput: string; warnings: string[]; noopEdits?: number[]; firstChangedLine?: number; lastChangedLine?: number; changedRegions: { first: number; last: number }[]; totalAddedLines: number; totalRemovedLines: number; initialSnapshot: string };
 const ROOT = new Set(["path", "snapshot", "changes"]);
 
-function assertNotLegacy(request: unknown): void {
-  if (isRec(request) && ("hash_range_inclusive" in request || Array.isArray(request.changes) && request.changes.some(c => isRec(c) && "hash_range_inclusive" in c))) {
-    throw new Error('[E_LEGACY_SHAPE] "hash_range_inclusive" is obsolete. Use snapshot plus numeric range.');
-  }
-}
 
 function assertReq(request: unknown): asserts request is ReqParams {
-  assertNotLegacy(request);
   if (!isRec(request)) throw new Error("[E_BAD_SHAPE] Replace request must be an object.");
   rejectUnknownFields(request, ROOT, "Replace request");
   if (typeof request.path !== "string" || !request.path) throw new Error('[E_BAD_SHAPE] Replace requires non-empty "path".');
@@ -59,7 +53,6 @@ export async function execPipeline(params: ReqParams, cwd: string, accessMode: n
 export function buildToolDef(opts: { autoRead?: boolean } = {}): ToolDefinition<any, ReplaceDetails> {
   const guidance = opts.autoRead ? "After `replace`, auto-read returns a fresh snapshot automatically." : "Use `read` again before follow-up `replace` calls.";
   return { name: "replace", label: "Replace", description: loadP("../prompts/replace.md", { AUTO_READ_GUIDANCE: guidance }), promptSnippet: loadP("../prompts/replace-snippet.md"), promptGuidelines: loadGuide("../prompts/replace-guidelines.md", { AUTO_READ_GUIDANCE: guidance }), parameters: editToolSchema,
-    prepareArguments(args) { assertNotLegacy(args); return args as any; },
     async execute(_id, params, signal, _update, ctx) {
       assertReq(params); const absolute = toCwd(params.path, ctx.cwd), target = await resolveTarget(absolute);
       return withFileMutationQueue(target, async () => {
