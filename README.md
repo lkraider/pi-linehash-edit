@@ -78,6 +78,8 @@ Text files return as `<anchor>│content` lines. Parameters:
 
 Large files are truncated with a pagination hint (`[Showing lines 1-100 of 500. Use offset=101 to continue.]`). Images (JPEG, PNG, GIF, WebP) return as attachments. Binary files and directories are rejected with a descriptive error. An empty file returns a single anchor `1│`; `replace` on it inserts content. A UTF-8 BOM is preserved across edits.
 
+`read` streams the file through a single shared file descriptor rather than loading it whole: line-counting, the requested window, and hashing all happen in one bounded-memory pass. Memory use stays flat regardless of file size — reading a multi-gigabyte log costs the same as reading a small one.
+
 ## `replace`
 
 Two request shapes, switched by `/toggle-replace-mode` (persisted):
@@ -155,7 +157,7 @@ npm install
 npm test
 ```
 
-`PI_HASHLINE_DEBUG=1` shows a session-start notification. The suite is 587 tests, including an adversarial set covering stale anchors, copied rows, span math, line-ending fidelity, and hash-width boundaries.
+`PI_HASHLINE_DEBUG=1` shows a session-start notification. The suite is 714 tests, including an adversarial set covering stale anchors, copied rows, span math, line-ending fidelity, and hash-width boundaries.
 
 ## Credits
 
