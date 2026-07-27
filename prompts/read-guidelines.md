@@ -1,2 +1,2 @@
-- Use `read` before `replace` unless you already have current anchors for the file.
-- HASH may contain `-` as a normal alphabet character, not a marker.
+- Copy the `s2:` snapshot from read into replace.
+- `line│` is display-only; content starts after `│`.

@@ -1,6 +1,5 @@
-{{MODE_PREFIX}}
-- After a successful replace, the response shows the change summary. {{AUTO_READ_GUIDANCE}}
-- On [E_STALE_ANCHOR], re-read and copy the current anchors into hash_range_inclusive before retrying.
-- content_lines must be a native JSON array of strings (not a JSON string), preserving leading whitespace exactly as shown after │ in read output.
-- **Boundary check:** before submitting, verify content_lines doesn't repeat a line that already survives outside your range — first non-empty line matching the line before the start anchor, or last non-empty line matching the line after the end anchor. A [W_DUP] warning means you missed one; the duplicate is kept exactly as submitted, never silently removed.
-- **Moving blocks:** to move a block atomically, use two changes in one `changes` array: (1) delete the source, `{ content_lines: [], hash_range_inclusive: [srcStart, srcEnd] }`, (2) insert at the target by replacing the target line with itself plus the moved content, `{ content_lines: [targetLine, ...movedLines], hash_range_inclusive: [targetAnchor, targetAnchor] }`. Both validate against one snapshot — no shifting anchors.
+- Read first; pass the returned `s2:` snapshot to `replace`.
+- Batch all same-file changes. Use numeric inclusive `range` values.
+- On `E_STALE_SNAPSHOT`, re-read. Never retry with the stale snapshot.
+- `content_lines` contains literal content only.
+{{AUTO_READ_GUIDANCE}}

@@ -4,6 +4,7 @@ import {
 	mkdir,
 	open,
 	readlink,
+	realpath,
 	rename,
 	rm,
 	stat,
@@ -16,6 +17,7 @@ import { errCode } from "./utils";
 
 export async function resolveTarget(path: string): Promise<string> {
   const absolutePath = resolve(path);
+  try { return await realpath(absolutePath); } catch (error) { if (errCode(error) !== "ENOENT") throw error; }
   const { root } = parse(absolutePath);
   const parts = absolutePath
     .slice(root.length)

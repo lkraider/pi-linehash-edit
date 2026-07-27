@@ -1,192 +1,33 @@
 import * as Diff from "diff";
-import {
-  lineHashes,
-  formatAnchor,
-  HASH_SEP,
-} from "./hashline";
 import { MAX_DIFF_LINES } from "./constants";
 
-export function shouldSkipDiff(oldLines: number, newLines: number): boolean {
-  return oldLines > MAX_DIFF_LINES || newLines > MAX_DIFF_LINES;
+export function shouldSkipDiff(oldLines: number, newLines: number): boolean { return oldLines > MAX_DIFF_LINES || newLines > MAX_DIFF_LINES; }
+export function detectEnding(content: string): "\r\n" | "\n" { const crlf = content.indexOf("\r\n"), lf = content.indexOf("\n"); return lf !== -1 && crlf !== -1 && crlf === lf ? "\r\n" : "\n"; }
+export function toLF(text: string): string { return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n"); }
+export function restoreEndings(text: string, ending: "\r\n" | "\n"): string { return ending === "\r\n" ? text.replace(/\n/g, "\r\n") : text; }
+export function stripBOM(content: string): { bom: string; text: string } { return content.startsWith("\uFEFF") ? { bom: "\uFEFF", text: content.slice(1) } : { bom: "", text: content }; }
+export interface EndingAnalysis { normalized: string; originalEnding: "\r\n" | "\n"; hadMixedEndings: boolean }
+export function analyzeEndings(raw: string): EndingAnalysis {
+  let first: "\r\n" | "\n" | undefined, crlf = false, lf = false, cr = false;
+  const normalized = raw.replace(/\r\n|\r|\n/g, m => { if (m === "\r\n") { crlf = true; first ??= "\r\n"; } else if (m === "\n") { lf = true; first ??= "\n"; } else cr = true; return "\n"; });
+  return { normalized, originalEnding: first ?? "\n", hadMixedEndings: cr || (crlf && lf) };
 }
-
-export function detectEnding(content: string): "\r\n" | "\n" {
-  const crlfIdx = content.indexOf("\r\n");
-  const lfIdx = content.indexOf("\n");
-  if (lfIdx === -1 || crlfIdx === -1) return "\n";
-  return crlfIdx < lfIdx ? "\r\n" : "\n";
-}
-
-export function toLF(text: string): string {
-  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-}
-
-export function restoreEndings(
-  text: string,
-  ending: "\r\n" | "\n",
-): string {
-  return ending === "\r\n" ? text.replace(/\n/g, "\r\n") : text;
-}
-
-export function stripBOM(content: string): { bom: string; text: string } {
-  return content.startsWith("\uFEFF")
-    ? { bom: "\uFEFF", text: content.slice(1) }
-    : { bom: "", text: content };
-}
-
-export interface EndingAnalysis {
-  normalized: string;
-  originalEnding: "\r\n" | "\n";
-  hadMixedEndings: boolean;
-}
-
-const LINE_BREAK_RE = /\r\n|\r|\n/g;
-
-export function analyzeEndings(rawContent: string): EndingAnalysis {
-  let originalEnding: "\r\n" | "\n" | undefined;
-  let sawCRLF = false;
-  let sawLoneLF = false;
-  let sawLoneCR = false;
-
-  const normalized = rawContent.replace(LINE_BREAK_RE, (match) => {
-    if (match === "\r\n") {
-      sawCRLF = true;
-      originalEnding ??= "\r\n";
-    } else if (match === "\n") {
-      sawLoneLF = true;
-      originalEnding ??= "\n";
-    } else {
-      sawLoneCR = true;
-    }
-    return "\n";
-  });
-
-  return {
-    normalized,
-    originalEnding: originalEnding ?? "\n",
-    hadMixedEndings: (sawCRLF && sawLoneLF) || sawLoneCR,
-  };
-}
-
-function anchorAt(hashes: string[], line: number): string | undefined {
-  const hash = hashes[line - 1];
-  return hash === undefined ? undefined : formatAnchor(line, hash);
-}
-
-function fmtDiffLine(
-  prefix: " " | "+" | "-",
-  line: string,
-  anchor: string | undefined,
-): string {
-  if (anchor === undefined) {
-    return `${prefix}${line}`;
-  }
-  return `${prefix}${anchor}${HASH_SEP}${line}`;
-}
-
-const ELLIPSIS = "__ELLIPSIS__";
-
-type ContextWindow = { linesToShow: string[]; skipStart: number; skipMiddle: number };
-
-function windowContext(
-  displayLines: string[],
-  afterChange: boolean,
-  beforeChange: boolean,
-  contextLines: number,
-): ContextWindow {
-  if (!afterChange) {
-    const skipStart = Math.max(0, displayLines.length - contextLines);
-    return { linesToShow: displayLines.slice(skipStart), skipStart, skipMiddle: 0 };
-  }
-  if (beforeChange && displayLines.length > contextLines * 2) {
-    const tail = displayLines.slice(-contextLines);
-    const linesToShow = [...displayLines.slice(0, contextLines), ELLIPSIS, ...tail];
-    return { linesToShow, skipStart: 0, skipMiddle: displayLines.length - contextLines * 2 };
-  }
-  if (displayLines.length > contextLines) {
-    return { linesToShow: displayLines.slice(0, contextLines), skipStart: 0, skipMiddle: 0 };
-  }
-  return { linesToShow: displayLines, skipStart: 0, skipMiddle: 0 };
-}
-
-function emitChangeLines(
-  output: string[],
-  displayLines: string[],
-  added: boolean,
-  hashes: string[],
-  newLineNum: number,
-): number {
-  for (const line of displayLines) {
-    if (added) {
-      output.push(fmtDiffLine("+", line, anchorAt(hashes, newLineNum)));
-      newLineNum++;
-    } else {
-      output.push(fmtDiffLine("-", line, undefined));
-    }
-  }
-  return newLineNum;
-}
-
-function emitContextLines(
-  output: string[],
-  window: ContextWindow,
-  hashes: string[],
-  newLineNum: number,
-): number {
-  if (window.skipStart > 0) {
-    output.push(" ...");
-    newLineNum += window.skipStart;
-  }
-  for (const line of window.linesToShow) {
-    if (line === ELLIPSIS) {
-      output.push(" ...");
-      newLineNum += window.skipMiddle;
-      continue;
-    }
-    output.push(fmtDiffLine(" ", line, anchorAt(hashes, newLineNum)));
-    newLineNum++;
-  }
-  return newLineNum;
-}
-
-export function genDiff(
-  oldContent: string,
-  newContent: string,
-  contextLines = 2,
-  newContentHashes?: string[],
-  _oldHashes?: string[],
-): { diff: string; firstChangedLine: number | undefined } {
-  const effectiveNewHashes = newContentHashes ?? lineHashes(newContent);
-
-  const parts = Diff.diffLines(oldContent, newContent);
-  const output: string[] = [];
-  let newLineNum = 1;
-  let lastWasChange = false;
-  let firstChangedLine: number | undefined;
-
+export function genDiff(oldContent: string, newContent: string, contextLines = 2): { diff: string; firstChangedLine: number | undefined } {
+  const parts = Diff.diffLines(oldContent, newContent), out: string[] = [];
+  let line = 1, firstChangedLine: number | undefined;
   for (let i = 0; i < parts.length; i++) {
-    const part = parts[i]!;
-    const raw = part.value.split("\n");
-    if (raw[raw.length - 1] === "") raw.pop();
-    const displayLines = raw;
-
+    const part = parts[i]!, rows = part.value.split("\n");
+    if (rows.at(-1) === "") rows.pop();
     if (part.added || part.removed) {
-      if (firstChangedLine === undefined) firstChangedLine = newLineNum;
-      newLineNum = emitChangeLines(output, displayLines, !!part.added, effectiveNewHashes, newLineNum);
-      lastWasChange = true;
+      firstChangedLine ??= line;
+      for (const row of rows) { out.push(`${part.added ? `+${line}│` : "-"}${row}`); if (part.added) line++; }
       continue;
     }
-
-    const nextPartIsChange =
-      i < parts.length - 1 && (parts[i + 1]!.added || parts[i + 1]!.removed);
-    if (lastWasChange || nextPartIsChange) {
-      const window = windowContext(displayLines, lastWasChange, nextPartIsChange, contextLines);
-      newLineNum = emitContextLines(output, window, effectiveNewHashes, newLineNum);
-    } else {
-      newLineNum += displayLines.length;
-    }
-    lastWasChange = false;
+    const shown = new Set<number>();
+    if (i > 0 && (parts[i - 1]!.added || parts[i - 1]!.removed)) for (let n = 0; n < Math.min(contextLines, rows.length); n++) shown.add(n);
+    if (i + 1 < parts.length && (parts[i + 1]!.added || parts[i + 1]!.removed)) for (let n = Math.max(0, rows.length - contextLines); n < rows.length; n++) shown.add(n);
+    for (const n of [...shown].sort((a, b) => a - b)) out.push(` ${line + n}│${rows[n]}`);
+    line += rows.length;
   }
-
-  return { diff: output.join("\n"), firstChangedLine };
+  return { diff: out.join("\n"), firstChangedLine };
 }

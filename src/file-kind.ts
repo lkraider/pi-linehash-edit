@@ -61,6 +61,10 @@ async function classifySample(sample: Buffer): Promise<SampleVerdict | undefined
   return { kind: "binary", description: detectedMimeType };
 }
 
+export async function classifyBytes(bytes: Buffer): Promise<SniffedKind> {
+  return (await classifySample(bytes.subarray(0, SNIFF_BYTES))) ?? { kind: "text" };
+}
+
 export async function sniffKind(filePath: string): Promise<SniffedKind> {
   const gated = statGate(await fsStat(filePath));
   if (gated) return gated;

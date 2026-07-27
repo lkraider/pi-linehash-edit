@@ -1,60 +1,14 @@
 {
   "name": "pi-linehash-edit",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
-  "description": "Strict, token-efficient read/replace tools for pi-coding-agent — every line addressed by number and verified by a drift checksum; no fuzzy matching, no silent relocation",
+  "description": "Strict numeric line editing guarded by a stateless whole-file snapshot",
   "main": "index.ts",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/lkraider/pi-linehash-edit.git"
-  },
-  "author": "pi-linehash-edit contributors",
-  "keywords": [
-    "pi-package",
-    "pi",
-    "coding-agent",
-    "extension",
-    "linehash",
-    "line-hash",
-    "hash-anchored",
-    "strict"
-  ],
   "license": "MIT",
-  "files": [
-    "index.ts",
-    "src",
-    "prompts",
-    "README.md",
-    "LICENSE"
-  ],
-  "pi": {
-    "extensions": [
-      "./index.ts"
-    ]
-  },
-  "dependencies": {
-    "diff": "^8.0.2",
-    "file-type": "^21.3.0",
-    "typebox": "^1.1.38"
-  },
-  "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.74.0",
-    "@earendil-works/pi-tui": "*"
-  },
-  "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "lint": "eslint 'src/**/*.ts' 'index.ts'",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run typecheck && npm run lint && npm test"
-  },
-  "devDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.74.0",
-    "@eslint/js": "^10.0.1",
-    "@types/node": "^22.0.0",
-    "eslint": "^10.7.0",
-    "typescript": "^5.8.0",
-    "typescript-eslint": "^8.65.0",
-    "vitest": "^4.1.8"
-  }
+  "files": ["index.ts", "src", "prompts", "README.md", "LICENSE"],
+  "pi": { "extensions": ["./index.ts"] },
+  "dependencies": { "diff": "^8.0.2", "file-type": "^21.3.0", "typebox": "^1.1.38" },
+  "peerDependencies": { "@earendil-works/pi-coding-agent": ">=0.74.0", "@earendil-works/pi-tui": "*" },
+  "scripts": { "test": "vitest run", "lint": "eslint 'src/**/*.ts' 'index.ts'", "typecheck": "tsc --noEmit", "prepublishOnly": "npm run typecheck && npm run lint && npm test" },
+  "devDependencies": { "@earendil-works/pi-coding-agent": "^0.74.0", "@eslint/js": "^10.0.1", "@types/node": "^22.0.0", "eslint": "^10.7.0", "typescript": "^5.8.0", "typescript-eslint": "^8.65.0", "vitest": "^4.1.8" }
 }

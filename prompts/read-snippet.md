@@ -1,1 +1,1 @@
-Read a text file and return <anchor>│content lines
+Read numbered lines with a whole-file snapshot guard.

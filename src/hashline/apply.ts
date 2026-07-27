@@ -1,249 +1,112 @@
-import { abortIf, visLines } from "../utils";
-import { lineHashes, formatAnchor, HASH_SEP } from "./hash";
-import {
-	resolveEdits,
-	assertNoBarePrefix,
-	warnUnicodeEscape,
-	formatMismatch,
-	describeEdit,
-	type ResolvedEdit,
-	type NoopEdit,
-	type ParsedEdit,
-} from "./resolve";
+import { CONTENT_LINES_NOT_STRING_MSG } from "../constants";
+import { abortIf, firstNonEmpty, isRec, lastNonEmpty, rejectUnknownFields, visLines } from "../utils";
 
-type LineSpan = {
-	index: number;
-	label: string;
-	startLine: number;
-	endLine: number;
-	replacement: string[];
+export type RawEdit = { range: [number, number]; content_lines: string[] };
+export type ParsedEdit = RawEdit;
+export type ChangedRegion = { first: number; last: number };
+export type ApplyResult = {
+  content: string;
+  firstChangedLine?: number;
+  lastChangedLine?: number;
+  changedRegions: ChangedRegion[];
+  warnings?: string[];
+  noopEdits?: { editIndex: number; loc: string; currentContent: string }[];
 };
 
-function assertNotEmpty(originalContent: string, result: string): void {
-	if (originalContent.trim().length > 0 && result.length === 0) {
-		throw new Error(
-			"[E_WOULD_EMPTY] Cannot empty a non-empty file via edit. Use `write` if you need to clear the file."
-		);
-	}
+const KEYS = new Set(["range", "content_lines"]);
+
+export function parseEdits(edits: RawEdit[]): ParsedEdit[] {
+  return edits.map((raw, index) => {
+    if (!isRec(raw)) throw new Error(`[E_BAD_SHAPE] Edit ${index} must be an object.`);
+    const edit = raw;
+    if ("hash_range_inclusive" in edit) throw new Error('[E_LEGACY_SHAPE] "hash_range_inclusive" is obsolete. Use numeric "range": [start, end] plus the whole-file snapshot.');
+    rejectUnknownFields(edit, KEYS, `Edit ${index}`, "Each edit takes only { range, content_lines }.");
+    if (!Array.isArray(edit.content_lines) || !edit.content_lines.every(line => typeof line === "string")) {
+      if (typeof edit.content_lines === "string") throw new Error(CONTENT_LINES_NOT_STRING_MSG);
+      throw new Error(`[E_BAD_SHAPE] Edit ${index} field "content_lines" must be a string array.`);
+    }
+    const brokenLine = edit.content_lines.findIndex(line => /[\r\n]/.test(line));
+    if (brokenLine !== -1) throw new Error(`[E_BAD_SHAPE] Edit ${index} content_lines[${brokenLine}] contains a line break; provide one array item per line.`);
+    if (!Array.isArray(edit.range) || edit.range.length !== 2 || !edit.range.every(Number.isInteger)) {
+      throw new Error(`[E_BAD_RANGE] Edit ${index} field "range" must be two integers [start, end].`);
+    }
+    const [start, end] = edit.range as [number, number];
+    if (start < 1 || end < start) throw new Error(`[E_BAD_RANGE] Edit ${index} range must satisfy 1 <= start <= end.`);
+    return { range: [start, end], content_lines: [...edit.content_lines] as string[] };
+  });
 }
 
-function throwConflict(
-	left: { index: number; label: string },
-	right: { index: number; label: string },
-	reason: string,
-): never {
-	throw new Error(
-		`[E_EDIT_CONFLICT] Edit ${left.index} (${left.label}) and edit ${right.index} (${right.label}) ${reason}.`
-	);
-}
-
-function editToSpan(
-  edit: ResolvedEdit,
-  index: number,
-  fileLines: string[],
-  noopEdits: NoopEdit[],
-): LineSpan | null {
-  const startLine = edit.hash_range_inclusive[0].line;
-  const endLine = edit.hash_range_inclusive[1].line;
-  const originalLines = fileLines.slice(startLine - 1, endLine);
-  if (
-    originalLines.length === edit.content_lines.length &&
-    originalLines.every(
-      (line, lineIndex) => line === edit.content_lines[lineIndex],
-    )
-  ) {
-    noopEdits.push({
-      editIndex: index,
-      loc: formatAnchor(startLine, edit.hash_range_inclusive[0].hash),
-      currentContent: originalLines.join("\n"),
-    });
-    return null;
+function assertNoCopiedRows(edits: ParsedEdit[], lines: string[]): void {
+  for (const [editIndex, edit] of edits.entries()) for (const [lineIndex, content] of edit.content_lines.entries()) {
+    const match = /^(\d+)│(.*)$/.exec(content);
+    if (!match) continue;
+    const row = Number(match[1]);
+    if (row >= edit.range[0] && row <= edit.range[1] && lines[row - 1] === match[2]) {
+      throw new Error(`[E_COPIED_ROW] Edit ${editIndex} content_lines[${lineIndex}] contains a read row. Remove the "line│" prefix.`);
+    }
   }
-
-  return {
-    index,
-    label: describeEdit(edit),
-    startLine,
-    endLine,
-    replacement: edit.content_lines,
-  };
 }
 
-function assertNoConflict(spans: LineSpan[]): void {
-	for (let leftIndex = 0; leftIndex < spans.length; leftIndex++) {
-		const left = spans[leftIndex]!;
-		for (
-			let rightIndex = leftIndex + 1;
-			rightIndex < spans.length;
-			rightIndex++
-		) {
-			const right = spans[rightIndex]!;
-
-			if (left.startLine <= right.endLine && right.startLine <= left.endLine) {
-				throwConflict(
-					left,
-					right,
-					"overlap on the same original line range",
-				);
-			}
-		}
-	}
+export function applyEdits(content: string, edits: ParsedEdit[], signal?: AbortSignal): ApplyResult {
+  abortIf(signal);
+  const lines = content.split("\n");
+  const lineCount = Math.max(1, visLines(content).length);
+  const warnings: string[] = [];
+  const noopEdits: NonNullable<ApplyResult["noopEdits"]> = [];
+  const ranges = edits.map((edit, index) => ({ ...edit, index })).sort((a, b) => a.range[0] - b.range[0]);
+  for (let i = 1; i < ranges.length; i++) if (ranges[i]!.range[0] <= ranges[i - 1]!.range[1]) {
+    throw new Error(`[E_EDIT_CONFLICT] Edit ${ranges[i - 1]!.index} and edit ${ranges[i]!.index} overlap.`);
+  }
+  const spans = edits.map((edit, index) => {
+    const [start, end] = edit.range;
+    if (end > lineCount) throw new Error(`[E_BAD_RANGE] Edit ${index} range ends at ${end}, but file has ${lineCount} line(s).`);
+    const current = lines.slice(start - 1, end);
+    if (current.length === edit.content_lines.length && current.every((line, i) => line === edit.content_lines[i])) {
+      noopEdits.push({ editIndex: index, loc: `${start}-${end}`, currentContent: current.join("\n") });
+      return null;
+    }
+    const before = lines[start - 2];
+    const after = lines[end];
+    const first = firstNonEmpty(edit.content_lines);
+    const last = lastNonEmpty(edit.content_lines);
+    if (first && first === before) warnings.push(`[W_DUP] Edit ${index}: content_lines starts with the preceding surviving line.`);
+    if (last && last === after) warnings.push(`[W_DUP] Edit ${index}: content_lines ends with the next surviving line.`);
+    return { ...edit, index };
+  }).filter((edit): edit is NonNullable<typeof edit> => edit !== null);
+  assertNoCopiedRows(edits, lines);
+  const ordered = [...spans].sort((a, b) => a.range[0] - b.range[0]);
+  const changedRegions: ChangedRegion[] = [];
+  let shift = 0;
+  for (const edit of ordered) {
+    const start = edit.range[0] + shift;
+    const last = edit.content_lines.length ? start + edit.content_lines.length - 1 : Math.max(1, start);
+    changedRegions.push({ first: start, last });
+    shift += edit.content_lines.length - (edit.range[1] - edit.range[0] + 1);
+  }
+  const result = [...lines];
+  for (const edit of [...spans].sort((a, b) => b.range[0] - a.range[0])) {
+    abortIf(signal);
+    result.splice(edit.range[0] - 1, edit.range[1] - edit.range[0] + 1, ...edit.content_lines);
+  }
+  const output = result.join("\n");
+  const range = changedRange(content, output);
+  const outputLines = Math.max(1, visLines(output).length);
+  const visibleRegions = changedRegions.map(region => ({ first: Math.min(region.first, outputLines), last: Math.min(region.last, outputLines) }));
+  return { content: output, firstChangedLine: range?.firstChangedLine, lastChangedLine: range?.lastChangedLine, changedRegions: visibleRegions,
+    ...(warnings.length ? { warnings } : {}), ...(noopEdits.length ? { noopEdits } : {}) };
 }
 
-function editsToSpans(
-	edits: ResolvedEdit[],
-	fileLines: string[],
-	noopEdits: NoopEdit[],
-	signal: AbortSignal | undefined,
-): LineSpan[] {
-	const seenSpanKeys = new Set<string>();
-	const resolvedSpans: LineSpan[] = [];
-	for (const [index, edit] of edits.entries()) {
-		abortIf(signal);
-		const span = editToSpan(edit, index, fileLines, noopEdits);
-		if (!span) {
-			continue;
-		}
-
-		const spanKey =
-				`${span.startLine}:${span.endLine}:${span.replacement.join("\n")}`;
-		if (seenSpanKeys.has(spanKey)) {
-			continue;
-		}
-		seenSpanKeys.add(spanKey);
-		resolvedSpans.push(span);
-	}
-
-	assertNoConflict(resolvedSpans);
-	return [...resolvedSpans].sort(
-		(left, right) => right.startLine - left.startLine,
-	);
+export function formatRegion(lines: string[], startLine = 1): string {
+  return lines.map((line, index) => `${startLine + index}│${line}`).join("\n");
 }
 
-function assemble(
-	fileLines: string[],
-	spans: LineSpan[],
-	signal: AbortSignal | undefined,
-): string {
-	const result = [...fileLines];
-	for (const span of spans) {
-		abortIf(signal);
-		result.splice(
-			span.startLine - 1,
-			span.endLine - span.startLine + 1,
-			...span.replacement,
-		);
-	}
-	return result.join("\n");
-}
-
-export function applyEdits(
-	content: string,
-	edits: ParsedEdit[],
-	signal?: AbortSignal,
-	precomputedHashes?: string[],
-	filePath?: string,
-	): {
-	content: string;
-	firstChangedLine: number | undefined;
-	lastChangedLine: number | undefined;
-	warnings?: string[];
-	noopEdits?: NoopEdit[];
-} {
-	abortIf(signal);
-	if (!edits.length)
-		return {
-			content,
-			firstChangedLine: undefined,
-			lastChangedLine: undefined,
-		};
-
-	const fileLines = content.split("\n");
-	const fileHashes = precomputedHashes ?? lineHashes(content);
-	const noopEdits: NoopEdit[] = [];
-	const warnings: string[] = [];
-
-	const { resolved, mismatches, boundaryWarnings } = resolveEdits(
-		edits,
-		fileLines,
-		fileHashes,
-		warnings,
-		signal,
-	);
-	if (mismatches.length) {
-		throw new Error(
-			formatMismatch(mismatches, fileLines, fileHashes, filePath),
-		);
-	}
-
-	assertNoBarePrefix(edits, fileLines, fileHashes, warnings);
-	warnUnicodeEscape(edits, warnings);
-
-	for (const bw of boundaryWarnings) {
-		const edge = bw.kind === "trailing" ? "ends with" : "starts with";
-		const surviving = bw.kind === "trailing" ? "the next surviving line" : "the preceding line";
-		warnings.push(
-			`[W_DUP] Edit ${bw.editIndex}: content_lines ${edge} ${JSON.stringify(bw.replacementLineContent)}, matching ${surviving}. If this duplicates content that already exists outside your range, remove it; if intentional, ignore this warning.`,
-		);
-	}
-
-	const orderedSpans = editsToSpans(resolved, fileLines, noopEdits, signal);
-
-	const result = assemble(fileLines, orderedSpans, signal);
-	assertNotEmpty(content, result);
-	const range = changedRange(content, result);
-
-	return {
-		content: result,
-		firstChangedLine: range?.firstChangedLine,
-		lastChangedLine: range?.lastChangedLine,
-		...(warnings.length ? { warnings } : {}),
-		...(noopEdits.length ? { noopEdits } : {}),
-	};
-}
-
-export function formatRegion(
-	hashes: string[],
-	lines: string[],
-	startLine = 1,
-): string {
-	if (hashes.length !== lines.length) {
-		throw new Error(
-			`formatRegion: hashes.length (${hashes.length}) must match lines.length (${lines.length}).`,
-		);
-	}
-	return lines
-		.map((line, index) => `${formatAnchor(startLine + index, hashes[index]!)}${HASH_SEP}${line}`)
-		.join("\n");
-}
-
-export function changedRange(
-	original: string,
-	result: string,
-): { firstChangedLine: number; lastChangedLine: number } | null {
-	if (original === result) return null;
-
-	const origLines = original.split("\n");
-	const resLines = result.split("\n");
-
-	let prefix = 0;
-	const maxShared = Math.min(origLines.length, resLines.length);
-	while (prefix < maxShared && origLines[prefix] === resLines[prefix]) {
-		prefix++;
-	}
-	let suffix = 0;
-	while (
-		suffix < maxShared - prefix &&
-		origLines[origLines.length - 1 - suffix] === resLines[resLines.length - 1 - suffix]
-	) {
-		suffix++;
-	}
-
-	const firstChangedLine = prefix + 1;
-	const lastChangedLine = resLines.length - suffix;
-	if (lastChangedLine < firstChangedLine) {
-		const point = Math.max(1, Math.min(firstChangedLine, visLines(result).length));
-		return { firstChangedLine: point, lastChangedLine: point };
-	}
-	return { firstChangedLine, lastChangedLine };
+export function changedRange(original: string, result: string): { firstChangedLine: number; lastChangedLine: number } | null {
+  if (original === result) return null;
+  const a = original.split("\n"), b = result.split("\n");
+  let prefix = 0;
+  while (prefix < Math.min(a.length, b.length) && a[prefix] === b[prefix]) prefix++;
+  let suffix = 0;
+  while (suffix < Math.min(a.length, b.length) - prefix && a[a.length - 1 - suffix] === b[b.length - 1 - suffix]) suffix++;
+  const firstChangedLine = prefix + 1;
+  return { firstChangedLine, lastChangedLine: Math.max(firstChangedLine, b.length - suffix, Math.min(firstChangedLine, visLines(result).length)) };
 }

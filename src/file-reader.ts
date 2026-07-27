@@ -1,82 +1,38 @@
-import { constants } from "fs";
-import { stat } from "fs/promises";
-import { lineHashes } from "./hashline";
-import { loadFileKindAndText, type LFile } from "./file-kind";
-import { resolveTarget } from "./fs-write";
+import { constants } from "node:fs";
+import { readSnapshot } from "./snapshot";
+import { classifyBytes } from "./file-kind";
+import { MAX_BYTES } from "./constants";
 import { toCwd } from "./paths";
 import { analyzeEndings, stripBOM } from "./replace-diff";
 import { abortIf, visLineCount } from "./utils";
-import { validateKind, validateAccess } from "./validation";
+import { validateAccess } from "./validation";
+
 export interface NormFile {
-  absolutePath: string;
   normalized: string;
   bom: string;
   originalEnding: "\r\n" | "\n";
-  fileHashes: string[];
+  snapshot: string;
   hadUtf8DecodeErrors: boolean;
   hadMixedEndings: boolean;
 }
 
-export type SnapInfo = {
-  snapshotId: string;
-  mtimeMs: number;
-  size: number;
-};
-
-function fmtSnapId(canonicalPath: string, info: { mtimeMs: number; size: number }): string {
-  return `v1|${canonicalPath}|${info.mtimeMs}|${info.size}`;
-}
-
-export async function fileSnap(absolutePath: string, resolvedPath?: string): Promise<SnapInfo> {
-  const canonicalPath = resolvedPath ?? (await resolveTarget(absolutePath));
-  const stats = await stat(canonicalPath);
-  return {
-    snapshotId: fmtSnapId(canonicalPath, stats),
-    mtimeMs: stats.mtimeMs,
-    size: stats.size,
-  };
-}
-
-export async function readNormFile(
-  path: string,
-  cwd: string,
-  signal: AbortSignal | undefined,
-  accessMode: number = constants.R_OK,
-  preloadedFile?: LFile,
-  maxLines?: number,
-  resolvedAbsolutePath?: string,
-): Promise<NormFile> {
-  const absolutePath = toCwd(path, cwd);
-  const resolvedPath = resolvedAbsolutePath ?? (await resolveTarget(absolutePath));
-
+export async function readNormFile(path: string, cwd: string, signal?: AbortSignal, accessMode = constants.R_OK, maxLines?: number, resolvedAbsolutePath?: string): Promise<NormFile> {
+  const absolute = toCwd(path, cwd);
+  const target = resolvedAbsolutePath;
   abortIf(signal);
-  await validateAccess(resolvedPath, path, accessMode);
-
+  const observation = await readSnapshot(absolute, target);
+  await validateAccess(observation.canonicalPath, path, accessMode);
   abortIf(signal);
-  const file = preloadedFile ?? (await loadFileKindAndText(resolvedPath));
-  validateKind(file, path);
-
-  abortIf(signal);
-  const { bom, text: rawContent } = stripBOM(file.text);
-  const { normalized, originalEnding, hadMixedEndings } = analyzeEndings(rawContent);
-
-  if (maxLines !== undefined) {
-    const lineCount = visLineCount(normalized);
-    if (lineCount > maxLines) {
-      throw new Error(
-        `[E_FILE_TOO_LARGE] ${path} has ${lineCount} lines, exceeding the ${maxLines}-line edit limit. Hashline editing targets source-sized files; for very large files use write or a non-line-based approach.`,
-      );
-    }
-  }
-
-  const fileHashes = lineHashes(normalized);
-  return {
-    absolutePath: resolvedPath,
-    normalized,
-    bom,
-    originalEnding,
-    fileHashes,
-    hadUtf8DecodeErrors: file.hadUtf8DecodeErrors === true,
-    hadMixedEndings,
-  };
+  if (observation.raw.length > MAX_BYTES) throw new Error(`[E_FILE_TOO_LARGE] ${path} exceeds the ${MAX_BYTES}-byte edit limit.`);
+  const kind = await classifyBytes(observation.raw);
+  if (kind.kind !== "text") throw new Error(`Path is not a text file: ${path}.`);
+  const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
+  const fatal = new TextDecoder("utf-8", { fatal: true });
+  let hadUtf8DecodeErrors = false;
+  try { fatal.decode(observation.raw); } catch { hadUtf8DecodeErrors = true; }
+  const decoded = decoder.decode(observation.raw);
+  const { bom, text } = stripBOM(decoded);
+  const { normalized, originalEnding, hadMixedEndings } = analyzeEndings(text);
+  if (maxLines !== undefined && visLineCount(normalized) > maxLines) throw new Error(`[E_FILE_TOO_LARGE] ${path} exceeds the ${maxLines}-line edit limit.`);
+  return { normalized, bom, originalEnding, snapshot: observation.snapshot, hadUtf8DecodeErrors, hadMixedEndings };
 }
