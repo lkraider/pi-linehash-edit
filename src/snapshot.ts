@@ -6,17 +6,20 @@ import { abortIf } from "./utils";
 const DOMAIN = Buffer.from("pi-linehash-edit\0snapshot-v2\0");
 const SNAP_RE = /^s2:[A-Za-z0-9_-]{22}$/;
 
-function field(value: Buffer): Buffer {
-  const length = Buffer.allocUnsafe(8);
-  length.writeBigUInt64BE(BigInt(value.length));
-  return Buffer.concat([length, value]);
+function length(value: Uint8Array): Buffer {
+  const result = Buffer.allocUnsafe(8);
+  result.writeBigUInt64BE(BigInt(value.byteLength));
+  return result;
 }
 
 export function snapshotTag(canonicalPath: string, raw: Uint8Array): string {
+  const path = Buffer.from(canonicalPath);
   const digest = createHash("sha256")
     .update(DOMAIN)
-    .update(field(Buffer.from(canonicalPath)))
-    .update(field(Buffer.from(raw)))
+    .update(length(path))
+    .update(path)
+    .update(length(raw))
+    .update(raw)
     .digest()
     .subarray(0, 16)
     .toString("base64url");
