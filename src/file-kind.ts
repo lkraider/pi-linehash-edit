@@ -33,23 +33,37 @@ export type SniffedKind =
   | { kind: "binary"; description: string }
   | { kind: "text" };
 
-export async function sniffKind(filePath: string): Promise<SniffedKind> {
-  const pathStat = await fsStat(filePath);
+type PreStatVerdict = { kind: "directory" } | { kind: "binary"; description: string };
+
+function statGate(pathStat: { isDirectory(): boolean; isFile(): boolean; size: number }): PreStatVerdict | undefined {
   if (pathStat.isDirectory()) {
     return { kind: "directory" };
   }
   if (!pathStat.isFile()) {
-    return {
-      kind: "binary",
-      description: "unsupported file type",
-    };
+    return { kind: "binary", description: "unsupported file type" };
   }
   if (pathStat.size > MAX_BYTES) {
-    return {
-      kind: "binary",
-      description: `file exceeds ${MAX_BYTES} byte limit`,
-    };
+    return { kind: "binary", description: `file exceeds ${MAX_BYTES} byte limit` };
   }
+  return undefined;
+}
+
+type SampleVerdict = { kind: "image"; mimeType: string } | { kind: "binary"; description: string };
+
+async function classifySample(sample: Buffer): Promise<SampleVerdict | undefined> {
+  const detectedMimeType = (await fileTypeFromBuffer(sample))?.mime;
+  if (detectedMimeType === undefined || isTextType(detectedMimeType)) {
+    return undefined;
+  }
+  if (IMG_TYPES.has(detectedMimeType)) {
+    return { kind: "image", mimeType: detectedMimeType };
+  }
+  return { kind: "binary", description: detectedMimeType };
+}
+
+export async function sniffKind(filePath: string): Promise<SniffedKind> {
+  const gated = statGate(await fsStat(filePath));
+  if (gated) return gated;
 
   const fileHandle = await fsOpen(filePath, "r");
   try {
@@ -60,18 +74,7 @@ export async function sniffKind(filePath: string): Promise<SniffedKind> {
     }
 
     const sample = buffer.subarray(0, bytesRead);
-    const detectedMimeType = (await fileTypeFromBuffer(sample))?.mime;
-    if (detectedMimeType !== undefined && !isTextType(detectedMimeType)) {
-      if (IMG_TYPES.has(detectedMimeType)) {
-        return { kind: "image", mimeType: detectedMimeType };
-      }
-      return {
-        kind: "binary",
-        description: detectedMimeType,
-      };
-    }
-
-    return { kind: "text" };
+    return (await classifySample(sample)) ?? { kind: "text" };
   } finally {
     await fileHandle.close();
   }
@@ -117,22 +120,8 @@ export async function detectUtf8DecodeErrors(
 export async function loadFileKindAndText(
   filePath: string,
 ): Promise<LFile> {
-  const pathStat = await fsStat(filePath);
-  if (pathStat.isDirectory()) {
-    return { kind: "directory" };
-  }
-  if (!pathStat.isFile()) {
-    return {
-      kind: "binary",
-      description: "unsupported file type",
-    };
-  }
-  if (pathStat.size > MAX_BYTES) {
-    return {
-      kind: "binary",
-      description: `file exceeds ${MAX_BYTES} byte limit`
-    };
-  }
+  const gated = statGate(await fsStat(filePath));
+  if (gated) return gated;
 
   const fileHandle = await fsOpen(filePath, "r");
   try {
@@ -148,20 +137,8 @@ export async function loadFileKindAndText(
     }
 
     const sample = buffer.subarray(0, bytesRead);
-    const detectedMimeType = (await fileTypeFromBuffer(sample))?.mime;
-    if (
-      detectedMimeType !== undefined &&
-      !isTextType(detectedMimeType)
-    ) {
-      if (IMG_TYPES.has(detectedMimeType)) {
-        return { kind: "image", mimeType: detectedMimeType };
-      }
-      return {
-        kind: "binary",
-        description: detectedMimeType,
-      };
-    }
-
+    const sniffed = await classifySample(sample);
+    if (sniffed) return sniffed;
 
     const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
     const fatalDecoder = new TextDecoder("utf-8", { fatal: true });

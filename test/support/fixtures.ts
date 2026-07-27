@@ -186,8 +186,6 @@ export function anchorAt(hashes: string[], line: number): string {
   return formatAnchor(line, hashes[line - 1]!);
 }
 
-export const anchorShapeRe = new RegExp(`^\\d+${HASH_RE}$`);
-
 export function anchorRowRe(
   content: string,
   opts: { prefix?: "" | " " | "+" | "-"; line?: number } = {},
