@@ -7,7 +7,7 @@ import { applyEdits, parseEdits } from "../src/line-edit";
 import { fmtReadPreviewStreamed } from "../src/read";
 import { buildToolDef, execPipeline } from "../src/replace";
 import { genDiff } from "../src/replace-diff";
-import { sparsePreview, sparseRows } from "../index";
+import extension, { sparsePreview, sparseRows } from "../index";
 import { toCwd } from "../src/paths";
 import { MAX_BYTES } from "../src/constants";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } from "@earendil-works/pi-coding-agent";
@@ -214,5 +214,19 @@ describe("sparse auto-read allocation", () => {
     expect(preview).toContain("2999│line 2999");
     expect(preview).not.toContain("omitted");
     expect(preview.split("\n").length).toBeLessThanOrEqual(DEFAULT_MAX_LINES);
+  });
+
+  it("deduplicates only the matching replace snapshot", async () => {
+    const { path, dir } = await fixture("a");
+    const snapshot = (await readSnapshot(path)).snapshot;
+    let toolResult: any;
+    extension({ registerTool() {}, registerCommand() {}, on(name: string, handler: any) { if (name === "tool_result") toolResult = handler; }, getActiveTools() { return []; }, setActiveTools() {} } as any);
+    const run = async (shown: string) => toolResult({ toolName: "replace", isError: false, input: { path }, details: { changedRegions: [{ first: 1, last: 1 }] }, content: [{ type: "text", text: `snapshot:${shown}` }] }, { cwd: dir });
+    const same = (await run(snapshot)).content.map((part: any) => part.text).join("\n");
+    expect(same.split(`snapshot:${snapshot}`).length - 1).toBe(1);
+    const prior = snapshotTag(path, Buffer.from("prior"));
+    const changed = (await run(prior)).content.map((part: any) => part.text).join("\n");
+    expect(changed).toContain(`snapshot:${prior}`);
+    expect(changed).toContain(`snapshot:${snapshot}`);
   });
 });

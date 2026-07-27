@@ -65,7 +65,10 @@ export default function (pi: ExtensionAPI): void {
       const file = await readNormFile(path, ctx.cwd);
       const rawRegions = details?.changedRegions;
       const regions: Region[] = Array.isArray(rawRegions) ? rawRegions.filter(isRec).map(r => ({ first: Number(r.first), last: Number(r.last) })).filter(r => Number.isInteger(r.first) && Number.isInteger(r.last)) : [{ first: 1, last: Math.min(AUTO_READ_MAX, Math.max(1, visLines(file.normalized).length)) }];
-      return { content: [...(event.content ?? []), { type: "text" as const, text: `\n\n--- Auto-read ---\n${sparsePreview(file.normalized, file.snapshot, regions)}` }] };
+      const marker = `snapshot:${file.snapshot}`;
+      let preview = sparsePreview(file.normalized, file.snapshot, regions);
+      if (event.toolName === "replace" && (event.content ?? []).some(part => part.type === "text" && part.text.split("\n").includes(marker))) preview = preview.slice(marker.length + 1);
+      return { content: [...(event.content ?? []), { type: "text" as const, text: `\n\n--- Auto-read ---\n${preview}` }] };
     } catch (error) { console.error("Auto-read failed:", error); }
   });
 }
