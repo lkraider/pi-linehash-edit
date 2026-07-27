@@ -29,18 +29,30 @@ export function sparseRows(lineCount: number, regions: Region[], cap = AUTO_READ
   return { rows: [...selected].sort((a, b) => a - b), omitted };
 }
 
-function sparsePreview(content: string, snapshot: string, regions: Region[]): string {
+export function sparsePreview(content: string, snapshot: string, regions: Region[]): string {
   const lines = visLines(content);
   if (!lines.length) return `snapshot:${snapshot}\n1│`;
-  const headerBytes = Buffer.byteLength(`snapshot:${snapshot}\n`);
-  const { rows, omitted } = sparseRows(lines.length, regions, AUTO_READ_MAX, 32, row => Buffer.byteLength(`${row}│${lines[row - 1]}\n`), Math.max(0, DEFAULT_MAX_BYTES - headerBytes - 4096));
-  const blocks: string[] = [`snapshot:${snapshot}`];
-  let run: number[] = [];
-  const flush = () => { if (run.length) blocks.push(formatRegion(run.map(n => lines[n - 1]!), run[0])); run = []; };
-  for (const row of rows) { if (run.length && row !== run.at(-1)! + 1) flush(); run.push(row); }
-  flush();
-  if (omitted.length) blocks.push(`[Changed regions omitted by cap: ${omitted.map(r => `${r.first}-${r.last}`).join(", ")}]`);
-  return blocks.join("\n\n");
+  const cost = (row: number) => Buffer.byteLength(`${row}│${lines[row - 1]}\n`);
+  let rowCap = Math.max(0, AUTO_READ_MAX - regions.length - 3);
+  const markerReserve = Buffer.byteLength(`[Changed regions omitted by cap: ${regions.map(r => `${r.first}-${r.last}`).join(", ")}]\n\n`);
+  let byteCap = DEFAULT_MAX_BYTES - Buffer.byteLength(`snapshot:${snapshot}\n`) - markerReserve;
+  let preview = "";
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const { rows, omitted } = sparseRows(lines.length, regions, rowCap, AUTO_READ_CONTEXT, cost, Math.max(0, byteCap));
+    const blocks: string[] = [`snapshot:${snapshot}`];
+    let run: number[] = [];
+    const flush = () => { if (run.length) blocks.push(formatRegion(run.map(n => lines[n - 1]!), run[0])); run = []; };
+    for (const row of rows) { if (run.length && row !== run.at(-1)! + 1) flush(); run.push(row); }
+    flush();
+    if (omitted.length) blocks.push(`[Changed regions omitted by cap: ${omitted.map(r => `${r.first}-${r.last}`).join(", ")}]`);
+    preview = blocks.join("\n\n");
+    const excessBytes = Buffer.byteLength(preview) - DEFAULT_MAX_BYTES;
+    const excessLines = preview.split("\n").length - AUTO_READ_MAX;
+    if (excessBytes <= 0 && excessLines <= 0) return preview;
+    byteCap -= Math.max(0, excessBytes) + 64;
+    rowCap = Math.max(0, rowCap - Math.max(1, excessLines));
+  }
+  return `snapshot:${snapshot}\n\n[All ${regions.length} changed regions omitted: metadata exceeds cap.]`;
 }
 
 export default function (pi: ExtensionAPI): void {

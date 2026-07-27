@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { chmod, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { snapshotTag, readSnapshot } from "../src/snapshot";
@@ -7,7 +7,14 @@ import { applyEdits, parseEdits } from "../src/hashline";
 import { fmtReadPreviewStreamed } from "../src/read";
 import { buildToolDef, execPipeline } from "../src/replace";
 import { genDiff } from "../src/replace-diff";
-import { sparseRows } from "../index";
+import { sparsePreview, sparseRows } from "../index";
+import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } from "@earendil-works/pi-coding-agent";
+
+const snapshotHook = vi.hoisted(() => ({ beforeRead: undefined as undefined | (() => void | Promise<void>) }));
+vi.mock("../src/snapshot", async importOriginal => {
+  const original = await importOriginal<typeof import("../src/snapshot")>();
+  return { ...original, readSnapshot: async (...args: Parameters<typeof original.readSnapshot>) => { await snapshotHook.beforeRead?.(); return original.readSnapshot(...args); } };
+});
 
 const dirs: string[] = [];
 async function fixture(content: string | Buffer, name = "file.txt") {
@@ -23,6 +30,13 @@ describe("snapshot v2", () => {
     expect(snapshotTag("/a", Buffer.from("x"))).toBe(a);
     expect(snapshotTag("/b", Buffer.from("x"))).not.toBe(a);
     for (const raw of ["x ", "x\n", "\ufeffx", "x\r\n"]) expect(snapshotTag("/a", Buffer.from(raw))).not.toBe(a);
+    expect(snapshotTag("/a", Buffer.from("collision-4-0-66"))).not.toBe(snapshotTag("/a", Buffer.from("collision-4-0-170")));
+  });
+
+  it("binds identical bytes to distinct canonical targets", async () => {
+    const { dir, path } = await fixture("same", "a.txt");
+    const other = join(dir, "b.txt"); await writeFile(other, "same");
+    expect((await readSnapshot(path)).snapshot).not.toBe((await readSnapshot(other)).snapshot);
   });
 
   it("binds symlink and target to one canonical mutation target", async () => {
@@ -47,12 +61,20 @@ describe("numeric edit", () => {
     ]));
     expect(result.content).toBe("a\nB\nB2\nc\nD");
     expect(result.changedRegions).toEqual([{ first: 2, last: 3 }, { first: 5, last: 5 }]);
+    const shifted = applyEdits("a\nb\nc\nd\ne", parseEdits([
+      { range: [2, 2], content_lines: ["B", "B2"] },
+      { range: [4, 4], content_lines: [] },
+    ]));
+    expect(shifted.content).toBe("a\nB\nB2\nc\ne");
+    expect(shifted.changedRegions).toEqual([{ first: 2, last: 3 }, { first: 5, last: 5 }]);
   });
 
   it("rejects overlap, invalid ranges, copied rows, and embedded line breaks", () => {
     expect(() => applyEdits("a\nb", parseEdits([{ range: [1, 2], content_lines: [] }, { range: [2, 2], content_lines: [] }]))).toThrow("E_EDIT_CONFLICT");
     expect(() => applyEdits("a\nb", parseEdits([{ range: [1, 1], content_lines: ["a"] }, { range: [1, 2], content_lines: ["A"] }]))).toThrow("E_EDIT_CONFLICT");
     expect(() => parseEdits([{ range: [0, 1], content_lines: [] }])).toThrow("E_BAD_RANGE");
+    expect(() => parseEdits([{ range: [1.5, 2], content_lines: [] }])).toThrow("E_BAD_RANGE");
+    expect(() => applyEdits("a", parseEdits([{ range: [2, 2], content_lines: [] }]))).toThrow("E_BAD_RANGE");
     expect(() => parseEdits([null] as any)).toThrow("E_BAD_SHAPE");
     expect(() => parseEdits([{ range: [1, 1], content_lines: ["a\nb"] }])).toThrow("line break");
     expect(() => applyEdits("a", parseEdits([{ range: [1, 1], content_lines: ["1│a"] }]))).toThrow("E_COPIED_ROW");
@@ -66,10 +88,20 @@ describe("numeric edit", () => {
 });
 
 describe("replace guard", () => {
-  it("rejects any unrelated post-read byte change", async () => {
-    const { path, dir } = await fixture("a\nb\nc"); const snap = await readSnapshot(path);
-    await writeFile(path, "a\nb \nc");
-    await expect(execPipeline({ path, snapshot: snap.snapshot, changes: [{ range: [1, 1], content_lines: ["A"] }] }, dir, 4)).rejects.toThrow("E_STALE_SNAPSHOT");
+  it("rejects every class of post-read raw-byte change", async () => {
+    const mutations = [
+      "a\nX\nc",
+      "a\nb\nb\nc",
+      "z\na\nb\nc",
+      "\ufeffa\nb\nc",
+      "a\r\nb\r\nc",
+      "a\nb \nc",
+    ];
+    for (const mutation of mutations) {
+      const { path, dir } = await fixture("a\nb\nc"); const snap = await readSnapshot(path);
+      await writeFile(path, mutation);
+      await expect(execPipeline({ path, snapshot: snap.snapshot, changes: [{ range: [1, 1], content_lines: ["A"] }] }, dir, 4)).rejects.toThrow("E_STALE_SNAPSHOT");
+    }
   });
 
   it("validates edits before file I/O and does not warn that a noop normalizes endings", async () => {
@@ -87,8 +119,40 @@ describe("replace guard", () => {
     expect(result.details.snapshot).toBe((await readSnapshot(path)).snapshot);
   });
 
-  it("rejects legacy requests concisely", async () => {
+  it("rechecks the snapshot immediately before writing", async () => {
+    const { path, dir } = await fixture("a\nb"); const snap = await readSnapshot(path);
+    let reads = 0;
+    snapshotHook.beforeRead = async () => { if (++reads === 2) await writeFile(path, "raced"); };
+    try {
+      await expect((buildToolDef() as any).execute("id", { path, snapshot: snap.snapshot, changes: [{ range: [1, 1], content_lines: ["A"] }] }, undefined, undefined, { cwd: dir })).rejects.toThrow("E_STALE_SNAPSHOT");
+      expect(await readFile(path, "utf8")).toBe("raced");
+    } finally { snapshotHook.beforeRead = undefined; }
+  });
+
+  it("edits symlink targets consistently and preserves permissions", async () => {
+    const { dir, path } = await fixture("a", "target.txt"); const link = join(dir, "link.txt"); await symlink(path, link); await chmod(path, 0o640);
+    const snap = await readSnapshot(link);
+    const result = await (buildToolDef() as any).execute("id", { path: link, snapshot: snap.snapshot, changes: [{ range: [1, 1], content_lines: ["A"] }] }, undefined, undefined, { cwd: dir });
+    expect(await readFile(path, "utf8")).toBe("A");
+    expect((await stat(path)).mode & 0o777).toBe(0o640);
+    expect(result.details.snapshot).toBe((await readSnapshot(path)).snapshot);
+  });
+
+  it("rewrites invalid UTF-8 explicitly and warns on mixed endings", async () => {
+    const invalid = await fixture(Buffer.from([0x61, 0xff])); const invalidRead = await fmtReadPreviewStreamed(invalid.path, {});
+    expect(invalidRead.hadUtf8DecodeErrors).toBe(true);
+    await (buildToolDef() as any).execute("id", { path: invalid.path, snapshot: invalidRead.snapshot, changes: [{ range: [1, 1], content_lines: ["ok"] }] }, undefined, undefined, { cwd: invalid.dir });
+    expect(await readFile(invalid.path, "utf8")).toBe("ok");
+    const mixed = await fixture("a\r\nb\n"); const mixedSnap = await readSnapshot(mixed.path);
+    const result = await (buildToolDef() as any).execute("id", { path: mixed.path, snapshot: mixedSnap.snapshot, changes: [{ range: [1, 1], content_lines: ["A"] }] }, undefined, undefined, { cwd: mixed.dir });
+    expect(result.content[0].text).toContain("W_MIXED_EOL");
+    expect(await readFile(mixed.path, "utf8")).toBe("A\r\nb\r\n");
+  });
+
+  it("rejects missing, malformed, and legacy guards", async () => {
     const tool = buildToolDef() as any;
+    await expect(tool.execute("id", { path: "x", changes: [{ range: [1, 1], content_lines: [] }] }, undefined, undefined, { cwd: "." })).rejects.toThrow("E_BAD_SNAPSHOT");
+    await expect(tool.execute("id", { path: "x", snapshot: "s2:bad", changes: [{ range: [1, 1], content_lines: [] }] }, undefined, undefined, { cwd: "." })).rejects.toThrow("E_BAD_SNAPSHOT");
     await expect(tool.execute("id", { path: "x", changes: [{ hash_range_inclusive: ["1", "1"], content_lines: [] }] }, undefined, undefined, { cwd: "." })).rejects.toThrow("E_LEGACY_SHAPE");
   });
 });
@@ -113,5 +177,13 @@ describe("sparse auto-read allocation", () => {
   it("marks changed regions omitted by mandatory cap", () => {
     const result = sparseRows(100, [{ first: 1, last: 10 }, { first: 90, last: 100 }], 12, 0);
     expect(result.omitted).toEqual([{ first: 90, last: 100 }]);
+  });
+
+  it("preserves hard caps while marking omitted mandatory output", () => {
+    const content = Array.from({ length: 5000 }, (_, i) => `${i + 1}-${"x".repeat(100)}`).join("\n");
+    const preview = sparsePreview(content, snapshotTag("/x", Buffer.from(content)), [{ first: 1, last: 5000 }]);
+    expect(Buffer.byteLength(preview)).toBeLessThanOrEqual(DEFAULT_MAX_BYTES);
+    expect(preview.split("\n").length).toBeLessThanOrEqual(DEFAULT_MAX_LINES);
+    expect(preview).toContain("Changed regions omitted by cap: 1-5000");
   });
 });
