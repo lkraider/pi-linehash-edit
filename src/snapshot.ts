@@ -1,7 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { open, stat } from "node:fs/promises";
 import { resolveTarget } from "./fs-write";
-import { abortIf } from "./utils";
+import { abortIf, errCode } from "./utils";
 
 const DOMAIN = Buffer.from("pi-linehash-edit\0snapshot-v2\0");
 const SNAP_RE = /^s2:[A-Za-z0-9_-]{22}$/;
@@ -45,7 +45,9 @@ export async function readSnapshot(path: string, canonicalPath?: string, signal?
       const before = await handle.stat({ bigint: true });
       const raw = await handle.readFile();
       const after = await handle.stat({ bigint: true });
-      const live = await stat(target, { bigint: true });
+      let live;
+      try { live = await stat(target, { bigint: true }); }
+      catch (error) { if (errCode(error) === "ENOENT") continue; throw error; }
       abortIf(signal);
       if (before.dev === after.dev && before.ino === after.ino && before.size === after.size && before.mtimeNs === after.mtimeNs && before.ctimeNs === after.ctimeNs && after.dev === live.dev && after.ino === live.ino && after.size === live.size && after.mtimeNs === live.mtimeNs && after.ctimeNs === live.ctimeNs) {
         return { canonicalPath: target, raw, snapshot: snapshotTag(target, raw) };

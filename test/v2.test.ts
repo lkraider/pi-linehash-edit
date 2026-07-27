@@ -78,6 +78,7 @@ describe("numeric edit", () => {
     expect(() => parseEdits([null] as any)).toThrow("E_BAD_SHAPE");
     expect(() => parseEdits([{ range: [1, 1], content_lines: ["a\nb"] }])).toThrow("line break");
     expect(() => applyEdits("a", parseEdits([{ range: [1, 1], content_lines: ["1│a"] }]))).toThrow("E_COPIED_ROW");
+    expect(() => applyEdits("a\nb", parseEdits([{ range: [2, 2], content_lines: ["1│a"] }]))).toThrow("E_COPIED_ROW");
   });
 
   it("edits empty files and preserves terminal newline", () => {
@@ -141,7 +142,8 @@ describe("replace guard", () => {
   it("rewrites invalid UTF-8 explicitly and warns on mixed endings", async () => {
     const invalid = await fixture(Buffer.from([0x61, 0xff])); const invalidRead = await fmtReadPreviewStreamed(invalid.path, {});
     expect(invalidRead.hadUtf8DecodeErrors).toBe(true);
-    await (buildToolDef() as any).execute("id", { path: invalid.path, snapshot: invalidRead.snapshot, changes: [{ range: [1, 1], content_lines: ["ok"] }] }, undefined, undefined, { cwd: invalid.dir });
+    const invalidResult = await (buildToolDef() as any).execute("id", { path: invalid.path, snapshot: invalidRead.snapshot, changes: [{ range: [1, 1], content_lines: ["ok"] }] }, undefined, undefined, { cwd: invalid.dir });
+    expect(invalidResult.content[0].text).toContain("rewrote the file as UTF-8");
     expect(await readFile(invalid.path, "utf8")).toBe("ok");
     const mixed = await fixture("a\r\nb\n"); const mixedSnap = await readSnapshot(mixed.path);
     const result = await (buildToolDef() as any).execute("id", { path: mixed.path, snapshot: mixedSnap.snapshot, changes: [{ range: [1, 1], content_lines: ["A"] }] }, undefined, undefined, { cwd: mixed.dir });
@@ -176,6 +178,12 @@ describe("sparse auto-read allocation", () => {
     expect(result.rows.some(n => n < 100)).toBe(true); expect(result.rows.some(n => n > 900)).toBe(true);
   });
 
+  it("gives each window context before adding a second side", () => {
+    const regions = [100, 300, 500, 700].map(first => ({ first, last: first }));
+    const result = sparseRows(1000, regions, 8, 32);
+    for (const region of regions) expect(result.rows).toContain(region.first - 1);
+  });
+
   it("marks changed regions omitted by mandatory cap", () => {
     const result = sparseRows(100, [{ first: 1, last: 10 }, { first: 90, last: 100 }], 12, 0);
     expect(result.omitted).toEqual([{ first: 90, last: 100 }]);
@@ -187,5 +195,14 @@ describe("sparse auto-read allocation", () => {
     expect(Buffer.byteLength(preview)).toBeLessThanOrEqual(DEFAULT_MAX_BYTES);
     expect(preview.split("\n").length).toBeLessThanOrEqual(DEFAULT_MAX_LINES);
     expect(preview).toContain("Changed regions omitted by cap: 1-5000");
+  });
+
+  it("does not spend row budget on distant-window separators", () => {
+    const content = Array.from({ length: 3000 }, (_, i) => `line ${i + 1}`).join("\n");
+    const regions = Array.from({ length: 1500 }, (_, i) => ({ first: i * 2 + 1, last: i * 2 + 1 }));
+    const preview = sparsePreview(content, snapshotTag("/x", Buffer.from(content)), regions);
+    expect(preview).toContain("2999│line 2999");
+    expect(preview).not.toContain("omitted");
+    expect(preview.split("\n").length).toBeLessThanOrEqual(DEFAULT_MAX_LINES);
   });
 });

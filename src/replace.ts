@@ -18,7 +18,7 @@ const range = Type.Array(Type.Integer({ minimum: 1 }), { minItems: 2, maxItems: 
 const change = Type.Object({ range, content_lines: contentLines }, { additionalProperties: false });
 export const editToolSchema = Type.Object({ path: Type.String(), snapshot: Type.String({ pattern: "^s2:[A-Za-z0-9_-]{22}$" }), changes: Type.Array(change, { minItems: 1 }) }, { additionalProperties: false });
 export type ReqParams = { path: string; snapshot: string; changes: RawEdit[] };
-export type ReplaceDetails = { diff: string; firstChangedLine?: number; changedRegions?: { first: number; last: number }[]; snapshot?: string; snapshotId?: string; classification?: "noop"; metrics?: RMetrics };
+export type ReplaceDetails = { diff: string; firstChangedLine?: number; changedRegions?: { first: number; last: number }[]; snapshot?: string; classification?: "noop"; metrics?: RMetrics };
 type PipelineResult = { path: string; originalNormalized: string; result: string; rawOutput: string; warnings: string[]; noopEdits?: { editIndex: number; loc: string; currentContent: string }[]; firstChangedLine?: number; lastChangedLine?: number; changedRegions: { first: number; last: number }[]; totalAddedLines: number; totalRemovedLines: number; initialSnapshot: string };
 const ROOT = new Set(["path", "snapshot", "changes"]);
 
@@ -47,6 +47,7 @@ export async function execPipeline(params: ReqParams, cwd: string, accessMode: n
   if (visLineCount(applied.content) > MAX_EDIT_LINES) throw new Error(`[E_FILE_TOO_LARGE] Result exceeds the ${MAX_EDIT_LINES}-line edit limit.`);
   if (Buffer.byteLength(rawOutput) > MAX_BYTES) throw new Error(`[E_FILE_TOO_LARGE] Result exceeds the ${MAX_BYTES}-byte edit limit.`);
   const warnings = [...(applied.warnings ?? [])];
+  if (applied.content !== file.normalized && file.hadUtf8DecodeErrors) warnings.push("Non-UTF-8 bytes were shown as U+FFFD; this edit rewrote the file as UTF-8.");
   if (applied.content !== file.normalized && file.hadMixedEndings) warnings.push(`[W_MIXED_EOL] File has mixed line endings; edit normalizes them to ${file.originalEnding === "\r\n" ? "CRLF" : "LF"}.`);
   let totalAddedLines = 0, totalRemovedLines = 0;
   const noops = new Set(applied.noopEdits?.map(n => n.editIndex));
@@ -68,14 +69,14 @@ export function buildToolDef(opts: { autoRead?: boolean } = {}): ToolDefinition<
       return withFileMutationQueue(target, async () => {
         const p = await execPipeline(params, ctx.cwd, constants.R_OK | constants.W_OK, signal, target);
         const meta: RMeta = { editsAttempted: params.changes.length, noopEditsCount: p.noopEdits?.length ?? 0, firstChangedLine: p.firstChangedLine, lastChangedLine: p.lastChangedLine, changedRegions: p.changedRegions, addedLines: p.totalAddedLines, removedLines: p.totalRemovedLines };
-        if (p.originalNormalized === p.result) return buildNoop({ path: p.path, snapshot: p.initialSnapshot, editMeta: meta, warnings: p.warnings, noopEdits: p.noopEdits });
+        if (p.originalNormalized === p.result) return buildNoop({ path: p.path, snapshot: p.initialSnapshot, editMeta: meta, warnings: p.warnings });
         abortIf(signal);
         const current = await readSnapshot(target, target, signal);
         if (!sameSnapshot(params.snapshot, current.snapshot)) throw new Error(`[E_STALE_SNAPSHOT] ${p.path} changed during replace; nothing was written.`);
         await writeAtomic(absolute, p.rawOutput, target);
         const next = snapshotTag(target, Buffer.from(p.rawOutput));
         const diff = shouldSkipDiff(p.originalNormalized.split("\n").length, p.result.split("\n").length) ? "" : genDiff(p.originalNormalized, p.result, 2).diff;
-        return buildChanged({ path: p.path, result: p.result, warnings: p.warnings, snapshot: next, editMeta: meta, diff });
+        return buildChanged({ path: p.path, warnings: p.warnings, snapshot: next, editMeta: meta, diff });
       });
     }
   } as ToolDefinition<any, ReplaceDetails>;

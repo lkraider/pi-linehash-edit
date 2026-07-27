@@ -41,7 +41,7 @@ function assertNoCopiedRows(edits: ParsedEdit[], lines: string[]): void {
     const match = /^(\d+)│(.*)$/.exec(content);
     if (!match) continue;
     const row = Number(match[1]);
-    if (row >= edit.range[0] && row <= edit.range[1] && lines[row - 1] === match[2]) {
+    if (row >= 1 && row <= lines.length && lines[row - 1] === match[2]) {
       throw new Error(`[E_COPIED_ROW] Edit ${editIndex} content_lines[${lineIndex}] contains a read row. Remove the "line│" prefix.`);
     }
   }
