@@ -1,1 +1,1 @@
-Replace numeric line ranges guarded by a whole-file snapshot.
+Replace numeric line ranges guarded by a whole-file checksum.

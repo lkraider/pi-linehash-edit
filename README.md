@@ -2,9 +2,9 @@
 
 `pi-linehash-edit` gives [pi](https://github.com/earendil-works/pi-mono) two strict, token-efficient tools for changing files: `read` and `replace`.
 
-The central idea is simple. A line number says **where** to edit. One whole-file snapshot says **which exact version of the file** those line numbers came from.
+The central idea is simple. A line number says **where** to edit. One whole-file checksum says **which exact version of the file** those line numbers came from.
 
-Think of the snapshot as a tamper seal on a printed document. You may ask to replace lines 8 through 10, but the tool first checks the seal. If anyone changed the document after you read it, even somewhere else, the seal no longer matches and the edit is refused.
+Think of the checksum as a tamper seal on a printed document. You may ask to replace lines 8 through 10, but the tool first checks the seal. If anyone changed the document after you read it, even somewhere else, the seal no longer matches and the edit is refused.
 
 That is the key promise in another form: the tool would rather stop and ask for a fresh read than apply an edit to a file version the model did not see.
 
@@ -36,7 +36,7 @@ Each candidate replayed the same events. Token counts were checked with three to
 
 The replay produced three practical findings:
 
-1. A numbered `line│` prefix measured 2.277 `o200k` tokens per displayed line. A per-line guarded prefix measured 3.795 tokens. With the current design, the larger snapshot tag is paid once at the top of a response instead of once on every line.
+1. A numbered `line│` prefix measured 2.277 `o200k` tokens per displayed line. A per-line guarded prefix measured 3.795 tokens. With the current design, the larger checksum is paid once at the top of a response instead of once on every line.
 
 2. Automatic reads that showed separate windows of 32 lines before and after each edit used 45.2% fewer tokens than broad first-change-to-last-change output. All 80 rows that were referenced later in the observed corpus were still present.
 
@@ -50,10 +50,10 @@ Suppose a file contains two declarations, and the second one is wrong.
 
 ### 1. Read the file
 
-The `read` tool returns one snapshot followed by numbered lines:
+The `read` tool returns one checksum followed by numbered lines:
 
 ```text
-snapshot:s2:4vQj8YqLw7R3tP0uN2mKxA
+checksum:4vQj8YqLw7R3tP0uN2mKxA
 1│const a = 1;
 2│const b = 2;
 3│
@@ -61,17 +61,17 @@ snapshot:s2:4vQj8YqLw7R3tP0uN2mKxA
 
 The separator `│` is only a visual boundary. It is not part of the file. On line 2, the actual content is `const b = 2;`.
 
-The first line is different. It carries the snapshot for the whole file:
+The first line is different. It carries the checksum for the whole file:
 
 ```text
-snapshot:s2:4vQj8YqLw7R3tP0uN2mKxA
+checksum:4vQj8YqLw7R3tP0uN2mKxA
 ```
 
-A partial read still receives a snapshot of the entire file, not merely the displayed page. Paginated reads behave the same way. An empty file displays `1│`, so its editable position is `[1,1]`.
+A partial read still receives a checksum of the entire file, not merely the displayed page. Paginated reads behave the same way. An empty file displays `1│`, so its editable position is `[1,1]`.
 
 ### 2. Describe the replacement
 
-The model keeps the snapshot, chooses the inclusive line range `[2,2]`, and supplies the new literal content.
+The model keeps the checksum, chooses the inclusive line range `[2,2]`, and supplies the new literal content.
 
 A range is inclusive because both endpoints belong to the replacement. For example, `[8,10]` means lines 8, 9, and 10.
 
@@ -80,7 +80,7 @@ A range is inclusive because both endpoints belong to the replacement. For examp
 ```json
 {
   "path": "src/main.ts",
-  "snapshot": "s2:4vQj8YqLw7R3tP0uN2mKxA",
+  "checksum": "4vQj8YqLw7R3tP0uN2mKxA",
   "changes": [
     { "range": [2, 2], "content_lines": ["const b = 3;"] },
     { "range": [8, 10], "content_lines": [] }
@@ -94,9 +94,9 @@ Every change in the batch refers to the same pre-edit file. The tool applies dis
 
 ### 4. Let the tool verify before writing
 
-If the path and snapshot still describe the file that was read, the tool applies the batch and returns a new snapshot.
+If the path and checksum still describe the file that was read, the tool applies the batch and returns a new checksum.
 
-If any raw byte changed, the tool returns `E_STALE_SNAPSHOT`. The correct response is to read the file again. Retrying the old snapshot cannot make it current.
+If any raw byte changed, the tool returns `E_STALE_CHECKSUM`. The correct response is to read the file again. Retrying the old checksum cannot make it current.
 
 If two ranges overlap, the tool returns `E_EDIT_CONFLICT`. If replacement content is identical to the current range, the operation is a no-op and nothing is written.
 
@@ -105,19 +105,19 @@ If two ranges overlap, the tool returns `E_EDIT_CONFLICT`. If replacement conten
 | Field | Meaning |
 | --- | --- |
 | `path` | A relative or absolute path to a text file |
-| `snapshot` | The exact `s2:` tag returned by `read` |
+| `checksum` | The exact 22-character value returned by `read` |
 | `changes` | A non-empty batch of changes for that one file |
-| `range` | Positive, inclusive `[start, end]` line numbers from the snapshot |
+| `range` | Positive, inclusive `[start, end]` line numbers from that checksum |
 | `content_lines` | Literal replacement lines; an empty array deletes the range |
 
 Each string in `content_lines` represents exactly one file line. It must not contain a line break. It must also omit the displayed `line│` prefix.
 
-## What the snapshot contains
+## What the checksum contains
 
-The snapshot has this shape:
+The checksum has this shape:
 
 ```text
-s2:base64url(first_128_bits(SHA-256(domain || lengths || canonical_path || raw_bytes)))
+base64url(first_128_bits(SHA-256(domain || lengths || canonical_path || raw_bytes)))
 ```
 
 Read aloud, the formula means:
@@ -127,11 +127,11 @@ Read aloud, the formula means:
 3. Add the file's exact raw bytes.
 4. Hash that input with SHA-256, the 256-bit Secure Hash Algorithm.
 5. Keep the first 128 bits.
-6. Encode those bits with URL-safe Base64, without padding, and prefix the result with `s2:`.
+6. Encode those bits with URL-safe Base64, without padding.
 
-The result is 22 Base64URL characters after `s2:`.
+The result is exactly 22 Base64URL characters.
 
-Because the exact bytes are included, all of these changes produce a different snapshot:
+Because the exact bytes are included, all of these changes produce a different checksum:
 
 - adding or removing a UTF-8 byte order mark (BOM);
 - changing line-ending style;
@@ -139,9 +139,9 @@ Because the exact bytes are included, all of these changes produce a different s
 - editing an unrelated line; or
 - changing the target reached through a symbolic link.
 
-The path is included too. Two different files with identical contents receive different snapshots.
+The path is included too. Two different files with identical contents receive different checksums.
 
-The protocol is stateless. It does not need a cache, database, session record, or persisted line index. A process restart does not erase the meaning of a snapshot, although the snapshot is useful only while the target path and bytes still match.
+The protocol is stateless. It does not need a cache, database, session record, or persisted line index. A process restart does not erase the meaning of a checksum, although the checksum is useful only while the target path and bytes still match.
 
 ## How writing is protected
 
@@ -150,10 +150,10 @@ The tool uses optimistic concurrency control. In plain language, it reads withou
 The sequence is deliberately strict:
 
 1. The request object and every edit are validated before file input/output begins.
-2. While reading a snapshot, the tool compares file-descriptor metadata before and after reading.
+2. While reading a checksum, the tool compares file-descriptor metadata before and after reading.
 3. It also checks that the live path still points to the same inode. An inode is the filesystem's identity record for a file.
 4. `replace` enters pi's per-file mutation queue. Calls targeting the same resolved file wait their turn.
-5. The snapshot is checked after entering that queue.
+5. The checksum is checked after entering that queue.
 6. It is checked once more immediately before writing.
 7. Only then is the file changed.
 
@@ -168,9 +168,9 @@ The tool also catches two common copying mistakes:
 
 Here is the safety idea again, from the filesystem's point of view: line numbers are accepted only together with evidence of the exact path and bytes that gave those numbers meaning.
 
-## What the snapshot does not guarantee
+## What the checksum does not guarantee
 
-A snapshot is a concurrency guard. It is not a lock, permission credential, or authorization token.
+A checksum is a concurrency guard. It is not a lock, permission credential, or authorization token.
 
 The 128-bit digest makes accidental collision negligible for this use, but no finite digest is mathematically collision-free. An external process can also write after the final validation and race with this tool. The per-file queue coordinates pi tools that use the queue; it cannot control every process on the machine.
 
@@ -178,7 +178,7 @@ Files are limited to 100 megabytes (MB). A replacement result is limited to 1,00
 
 ## Automatic reads after an edit
 
-After a successful write, the result includes the next snapshot. Automatic read is enabled by default.
+After a successful write, the result includes the next checksum. Automatic read is enabled by default.
 
 Instead of returning one large block from the first changed line to the last changed line, automatic read returns separate windows around changed regions. Each window can include up to 32 lines of context before and after the change. Overlapping windows are merged.
 
@@ -250,7 +250,7 @@ npm run prepublishOnly
 - [Aider's edit-format benchmarks](https://aider.chat/docs/more/edit-formats.html) show that format performance depends on the model.
 - JetBrains' [Diff-XYZ](https://arxiv.org/abs/2510.12487) reports that no single edit representation dominates every model and use case.
 - [CodeEditorBench](https://arxiv.org/abs/2404.03543) provides broader code-editing evaluation context.
-- Kung and Robinson's work on [optimistic concurrency control](https://mwhittaker.github.io/papers/html/kung1981optimistic.html) describes the read, validate, and write model behind snapshot rejection.
+- Kung and Robinson's work on [optimistic concurrency control](https://mwhittaker.github.io/papers/html/kung1981optimistic.html) describes the read, validate, and write model behind stale-checksum rejection.
 
 ## License
 

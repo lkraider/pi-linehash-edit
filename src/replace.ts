@@ -7,7 +7,7 @@ import { restoreEndings, genDiff, shouldSkipDiff } from "./replace-diff";
 import { resolveTarget, writeAtomic } from "./fs-write";
 import { applyEdits, parseEdits, type RawEdit } from "./line-edit";
 import { toCwd } from "./paths";
-import { readSnapshot, assertSnapshot, sameSnapshot, snapshotTag } from "./snapshot";
+import { readChecksum, assertChecksum, sameChecksum, fileChecksum } from "./checksum";
 import { isRec, rejectUnknownFields, abortIf, visLineCount } from "./utils";
 import { MAX_BYTES, MAX_EDIT_LINES } from "./constants";
 import { buildChanged, buildNoop, type RMeta, type RMetrics } from "./replace-response";
@@ -16,18 +16,17 @@ import { loadP, loadGuide } from "./prompts";
 const contentLines = Type.Array(Type.String({ pattern: "^[^\\r\\n]*$" }), { description: "literal replacement lines without line│ prefixes" });
 const range = Type.Array(Type.Integer({ minimum: 1 }), { minItems: 2, maxItems: 2, description: "inclusive numeric [start, end]" });
 const change = Type.Object({ range, content_lines: contentLines }, { additionalProperties: false });
-const editToolSchema = Type.Object({ path: Type.String(), snapshot: Type.String({ pattern: "^s2:[A-Za-z0-9_-]{22}$" }), changes: Type.Array(change, { minItems: 1 }) }, { additionalProperties: false });
-export type ReqParams = { path: string; snapshot: string; changes: RawEdit[] };
-export type ReplaceDetails = { diff: string; firstChangedLine?: number; changedRegions?: { first: number; last: number }[]; snapshot?: string; classification?: "noop"; metrics?: RMetrics };
-type PipelineResult = { path: string; originalNormalized: string; result: string; rawOutput: string; warnings: string[]; noopEdits?: number[]; firstChangedLine?: number; lastChangedLine?: number; changedRegions: { first: number; last: number }[]; totalAddedLines: number; totalRemovedLines: number; initialSnapshot: string };
-const ROOT = new Set(["path", "snapshot", "changes"]);
-
+const editToolSchema = Type.Object({ path: Type.String(), checksum: Type.String({ pattern: "^[A-Za-z0-9_-]{22}$" }), changes: Type.Array(change, { minItems: 1 }) }, { additionalProperties: false });
+export type ReqParams = { path: string; checksum: string; changes: RawEdit[] };
+export type ReplaceDetails = { diff: string; firstChangedLine?: number; changedRegions?: { first: number; last: number }[]; checksum?: string; classification?: "noop"; metrics?: RMetrics };
+type PipelineResult = { path: string; originalNormalized: string; result: string; rawOutput: string; warnings: string[]; noopEdits?: number[]; firstChangedLine?: number; lastChangedLine?: number; changedRegions: { first: number; last: number }[]; totalAddedLines: number; totalRemovedLines: number; initialChecksum: string };
+const ROOT = new Set(["path", "checksum", "changes"]);
 
 function assertReq(request: unknown): asserts request is ReqParams {
   if (!isRec(request)) throw new Error("[E_BAD_SHAPE] Replace request must be an object.");
   rejectUnknownFields(request, ROOT, "Replace request");
   if (typeof request.path !== "string" || !request.path) throw new Error('[E_BAD_SHAPE] Replace requires non-empty "path".');
-  assertSnapshot(request.snapshot);
+  assertChecksum(request.checksum);
   if (!Array.isArray(request.changes) || request.changes.length === 0) throw new Error('[E_BAD_SHAPE] Replace requires a non-empty "changes" array.');
 }
 
@@ -35,7 +34,7 @@ export async function execPipeline(params: ReqParams, cwd: string, accessMode: n
   assertReq(params);
   const edits = parseEdits(params.changes);
   const file = await readNormFile(params.path, cwd, signal, accessMode, MAX_EDIT_LINES, target);
-  if (!sameSnapshot(params.snapshot, file.snapshot)) throw new Error(`[E_STALE_SNAPSHOT] Snapshot does not match ${params.path}. Re-read and retry with the new snapshot.`);
+  if (!sameChecksum(params.checksum, file.checksum)) throw new Error(`[E_STALE_CHECKSUM] Checksum does not match ${params.path}. Re-read and retry with the new checksum.`);
   const applied = applyEdits(file.normalized, edits, signal);
   const rawOutput = file.bom + restoreEndings(applied.content, file.originalEnding);
   if (visLineCount(applied.content) > MAX_EDIT_LINES) throw new Error(`[E_FILE_TOO_LARGE] Result exceeds the ${MAX_EDIT_LINES}-line edit limit.`);
@@ -46,28 +45,28 @@ export async function execPipeline(params: ReqParams, cwd: string, accessMode: n
   let totalAddedLines = 0, totalRemovedLines = 0;
   const noops = new Set(applied.noopEdits);
   edits.forEach((edit, i) => { if (!noops.has(i)) { totalAddedLines += edit.content_lines.length; totalRemovedLines += edit.range[1] - edit.range[0] + 1; } });
-  return { path: params.path, originalNormalized: file.normalized, result: applied.content, rawOutput, warnings, noopEdits: applied.noopEdits, firstChangedLine: applied.firstChangedLine, lastChangedLine: applied.lastChangedLine, changedRegions: applied.changedRegions, totalAddedLines, totalRemovedLines, initialSnapshot: file.snapshot };
+  return { path: params.path, originalNormalized: file.normalized, result: applied.content, rawOutput, warnings, noopEdits: applied.noopEdits, firstChangedLine: applied.firstChangedLine, lastChangedLine: applied.lastChangedLine, changedRegions: applied.changedRegions, totalAddedLines, totalRemovedLines, initialChecksum: file.checksum };
 }
 
-
 export function buildToolDef(opts: { autoRead?: boolean } = {}): ToolDefinition<any, ReplaceDetails> {
-  const guidance = opts.autoRead ? "After `replace`, auto-read returns a fresh snapshot automatically." : "Use `read` again before follow-up `replace` calls.";
+  const guidance = opts.autoRead ? "After `replace`, auto-read returns a fresh checksum automatically." : "Use `read` again before follow-up `replace` calls.";
   return { name: "replace", label: "Replace", description: loadP("../prompts/replace.md", { AUTO_READ_GUIDANCE: guidance }), promptSnippet: loadP("../prompts/replace-snippet.md"), promptGuidelines: loadGuide("../prompts/replace-guidelines.md", { AUTO_READ_GUIDANCE: guidance }), parameters: editToolSchema,
     async execute(_id, params, signal, _update, ctx) {
       assertReq(params); const absolute = toCwd(params.path, ctx.cwd), target = await resolveTarget(absolute);
       return withFileMutationQueue(target, async () => {
         const p = await execPipeline(params, ctx.cwd, constants.R_OK | constants.W_OK, signal, target);
         const meta: RMeta = { editsAttempted: params.changes.length, noopEditsCount: p.noopEdits?.length ?? 0, firstChangedLine: p.firstChangedLine, lastChangedLine: p.lastChangedLine, changedRegions: p.changedRegions, addedLines: p.totalAddedLines, removedLines: p.totalRemovedLines };
-        if (p.originalNormalized === p.result) return buildNoop({ path: p.path, snapshot: p.initialSnapshot, editMeta: meta });
+        if (p.originalNormalized === p.result) return buildNoop({ path: p.path, checksum: p.initialChecksum, editMeta: meta });
         abortIf(signal);
-        const current = await readSnapshot(target, target, signal);
-        if (!sameSnapshot(params.snapshot, current.snapshot)) throw new Error(`[E_STALE_SNAPSHOT] ${p.path} changed during replace; nothing was written.`);
+        const current = await readChecksum(target, target, signal);
+        if (!sameChecksum(params.checksum, current.checksum)) throw new Error(`[E_STALE_CHECKSUM] ${p.path} changed during replace; nothing was written.`);
         await writeAtomic(absolute, p.rawOutput, target);
-        const next = snapshotTag(target, Buffer.from(p.rawOutput));
+        const next = fileChecksum(target, Buffer.from(p.rawOutput));
         const diff = shouldSkipDiff(p.originalNormalized.split("\n").length, p.result.split("\n").length) ? "" : genDiff(p.originalNormalized, p.result, 2).diff;
-        return buildChanged({ path: p.path, warnings: p.warnings, snapshot: next, editMeta: meta, diff });
+        return buildChanged({ path: p.path, warnings: p.warnings, checksum: next, editMeta: meta, diff });
       });
     }
   } as ToolDefinition<any, ReplaceDetails>;
 }
+
 export function regReplace(pi: ExtensionAPI, autoRead?: boolean): void { pi.registerTool(buildToolDef({ autoRead })); }

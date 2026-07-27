@@ -1,2 +1,2 @@
-- Copy the `s2:` snapshot from `read` into `replace`.
+- Copy the checksum from `read` into `replace`.
 - Treat `line│` prefixes from `read` as display-only; content starts after `│`.

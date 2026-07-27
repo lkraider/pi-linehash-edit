@@ -30,16 +30,16 @@ export function sparseRows(lineCount: number, regions: Region[], cap = AUTO_READ
   return { rows: [...selected].sort((a, b) => a - b), omitted };
 }
 
-export function sparsePreview(content: string, snapshot: string, regions: Region[]): string {
+export function sparsePreview(content: string, checksum: string, regions: Region[]): string {
   const lines = visLines(content);
-  if (!lines.length) return `snapshot:${snapshot}\n1│`;
+  if (!lines.length) return `checksum:${checksum}\n1│`;
   const cost = (row: number) => Buffer.byteLength(`${row}│${lines[row - 1]}\n`);
   const markerReserve = Buffer.byteLength(`[Changed regions omitted by cap: ${regions.map(r => `${r.first}-${r.last}`).join(", ")}]\n`);
   const { rows, omitted } = sparseRows(
     lines.length, regions, AUTO_READ_MAX - 2, AUTO_READ_CONTEXT, cost,
-    Math.max(0, DEFAULT_MAX_BYTES - Buffer.byteLength(`snapshot:${snapshot}\n`) - markerReserve),
+    Math.max(0, DEFAULT_MAX_BYTES - Buffer.byteLength(`checksum:${checksum}\n`) - markerReserve),
   );
-  const blocks: string[] = [`snapshot:${snapshot}`];
+  const blocks: string[] = [`checksum:${checksum}`];
   let run: number[] = [];
   const flush = () => { if (run.length) blocks.push(formatRegion(run.map(n => lines[n - 1]!), run[0])); run = []; };
   for (const row of rows) { if (run.length && row !== run.at(-1)! + 1) flush(); run.push(row); }
@@ -47,7 +47,7 @@ export function sparsePreview(content: string, snapshot: string, regions: Region
   if (omitted.length) blocks.push(`[Changed regions omitted by cap: ${omitted.map(r => `${r.first}-${r.last}`).join(", ")}]`);
   const preview = blocks.join("\n");
   if (Buffer.byteLength(preview) <= DEFAULT_MAX_BYTES) return preview;
-  return `snapshot:${snapshot}\n[All ${regions.length} changed regions omitted: metadata exceeds cap.]`;
+  return `checksum:${checksum}\n[All ${regions.length} changed regions omitted: metadata exceeds cap.]`;
 }
 
 export default function (pi: ExtensionAPI): void {
@@ -65,8 +65,8 @@ export default function (pi: ExtensionAPI): void {
       const file = await readNormFile(path, ctx.cwd);
       const rawRegions = details?.changedRegions;
       const regions: Region[] = Array.isArray(rawRegions) ? rawRegions.filter(isRec).map(r => ({ first: Number(r.first), last: Number(r.last) })).filter(r => Number.isInteger(r.first) && Number.isInteger(r.last)) : [{ first: 1, last: Math.min(AUTO_READ_MAX, Math.max(1, visLines(file.normalized).length)) }];
-      const marker = `snapshot:${file.snapshot}`;
-      let preview = sparsePreview(file.normalized, file.snapshot, regions);
+      const marker = `checksum:${file.checksum}`;
+      let preview = sparsePreview(file.normalized, file.checksum, regions);
       if (event.toolName === "replace" && (event.content ?? []).some(part => part.type === "text" && part.text.split("\n").includes(marker))) preview = preview.slice(marker.length + 1);
       return { content: [...(event.content ?? []), { type: "text" as const, text: `\n\n--- Auto-read ---\n${preview}` }] };
     } catch (error) { console.error("Auto-read failed:", error); }

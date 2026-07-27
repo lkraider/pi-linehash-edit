@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { readSnapshot } from "./snapshot";
+import { readChecksum } from "./checksum";
 import { classifyBytes } from "./file-kind";
 import { toCwd } from "./paths";
 import { analyzeEndings, stripBOM } from "./replace-diff";
@@ -10,7 +10,7 @@ export interface NormFile {
   normalized: string;
   bom: string;
   originalEnding: "\r\n" | "\n";
-  snapshot: string;
+  checksum: string;
   hadUtf8DecodeErrors: boolean;
   hadMixedEndings: boolean;
 }
@@ -18,7 +18,7 @@ export interface NormFile {
 export async function readNormFile(path: string, cwd: string, signal?: AbortSignal, accessMode = constants.R_OK, maxLines?: number, resolvedAbsolutePath?: string): Promise<NormFile> {
   const absolute = toCwd(path, cwd);
   abortIf(signal);
-  const observation = await readSnapshot(absolute, resolvedAbsolutePath, signal);
+  const observation = await readChecksum(absolute, resolvedAbsolutePath, signal);
   await validateAccess(observation.canonicalPath, path, accessMode);
   abortIf(signal);
   const kind = await classifyBytes(observation.raw);
@@ -31,5 +31,5 @@ export async function readNormFile(path: string, cwd: string, signal?: AbortSign
   const { bom, text } = stripBOM(decoded);
   const { normalized, originalEnding, hadMixedEndings } = analyzeEndings(text);
   if (maxLines !== undefined && visLineCount(normalized) > maxLines) throw new Error(`[E_FILE_TOO_LARGE] ${path} exceeds the ${maxLines}-line edit limit.`);
-  return { normalized, bom, originalEnding, snapshot: observation.snapshot, hadUtf8DecodeErrors, hadMixedEndings };
+  return { normalized, bom, originalEnding, checksum: observation.checksum, hadUtf8DecodeErrors, hadMixedEndings };
 }

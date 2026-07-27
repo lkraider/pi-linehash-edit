@@ -1,1 +1,1 @@
-Read numbered lines with a whole-file snapshot guard.
+Read numbered lines with a whole-file checksum guard.

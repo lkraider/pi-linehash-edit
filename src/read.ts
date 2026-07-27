@@ -22,13 +22,13 @@ function formatPaginationHint(start: number, end: number, total: number, next: n
   return `[Showing lines ${start}-${end} of ${total}${byteLimit ? ` (${formatSize(byteLimit)} limit)` : ""}. Use offset=${next} to continue.]`;
 }
 
-function finish(lines: string[], start: number, total: number, snapshot: string, forceTruncated = false): { text: string; truncation?: TruncationResult; nextOffset?: number } {
-  if (start > total && (total > 0 || start > 1)) return { text: `snapshot:${snapshot}\nOffset ${start} is beyond end of file (${total} lines total).` };
+function finish(lines: string[], start: number, total: number, checksum: string, forceTruncated = false): { text: string; truncation?: TruncationResult; nextOffset?: number } {
+  if (start > total && (total > 0 || start > 1)) return { text: `checksum:${checksum}\nOffset ${start} is beyond end of file (${total} lines total).` };
   const rows = total === 0 ? "1│" : formatRegion(lines, start);
-  let truncation = truncateHead(`snapshot:${snapshot}\n${rows}`);
+  let truncation = truncateHead(`checksum:${checksum}\n${rows}`);
   if (forceTruncated && !truncation.truncated) truncation = { ...truncation, truncated: true, truncatedBy: "lines", totalLines: total + 1 };
   const shown = Math.max(0, truncation.outputLines - 1);
-  if (total > 0 && shown === 0) return { text: `snapshot:${snapshot}\n[Line ${start} exceeds ${formatSize(truncation.maxBytes)}.]`, truncation };
+  if (total > 0 && shown === 0) return { text: `checksum:${checksum}\n[Line ${start} exceeds ${formatSize(truncation.maxBytes)}.]`, truncation };
   const end = total === 0 ? 0 : start + shown - 1;
   const hasMore = truncation.truncated || end < total;
   const nextOffset = hasMore ? Math.max(start, end + 1) : undefined;
@@ -41,8 +41,8 @@ export async function fmtReadPreviewStreamed(path: string, options: { offset?: n
   const start = positive(options.offset, "offset") ?? 1, limit = positive(options.limit, "limit");
   const observed = await streamReadWindow(path, start, limit, signal);
   if (observed.kind.kind !== "text") throw new Error(`Path changed to a non-text file while being read: ${path}.`);
-  const result = finish(observed.selectedLines, start, observed.totalLines, observed.snapshot, limit === undefined && observed.totalLines > DEFAULT_MAX_LINES);
-  return { ...result, snapshot: observed.snapshot, hadUtf8DecodeErrors: observed.hadUtf8DecodeErrors };
+  const result = finish(observed.selectedLines, start, observed.totalLines, observed.checksum, limit === undefined && observed.totalLines > DEFAULT_MAX_LINES);
+  return { ...result, checksum: observed.checksum, hadUtf8DecodeErrors: observed.hadUtf8DecodeErrors };
 }
 
 export function regRead(pi: ExtensionAPI): void {

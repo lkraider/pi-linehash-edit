@@ -11,11 +11,11 @@ function metrics(kind: "applied" | "noop", meta: RMeta, warnings = 0): RMetrics 
   return result;
 }
 
-export function buildNoop(input: { path: string; snapshot: string; editMeta: RMeta }): Result {
-  return { content: [{ type: "text", text: `No changes made to ${input.path}.\nsnapshot:${input.snapshot}` }], details: { diff: "", snapshot: input.snapshot, classification: "noop", metrics: metrics("noop", input.editMeta) } };
+export function buildNoop(input: { path: string; checksum: string; editMeta: RMeta }): Result {
+  return { content: [{ type: "text", text: `No changes made to ${input.path}.\nchecksum:${input.checksum}` }], details: { diff: "", checksum: input.checksum, classification: "noop", metrics: metrics("noop", input.editMeta) } };
 }
 
-export function buildChanged(input: { path: string; warnings?: string[]; snapshot: string; editMeta: RMeta; diff: string }): Result {
+export function buildChanged(input: { path: string; warnings?: string[]; checksum: string; editMeta: RMeta; diff: string }): Result {
   const warning = input.warnings?.length ? `\n\nWarnings:\n${input.warnings.join("\n")}` : "";
-  return { content: [{ type: "text", text: `Successfully replaced in ${input.path}.\nsnapshot:${input.snapshot}${warning}` }], details: { diff: input.diff, firstChangedLine: input.editMeta.firstChangedLine, changedRegions: input.editMeta.changedRegions, snapshot: input.snapshot, metrics: metrics("applied", input.editMeta, input.warnings?.length) } };
+  return { content: [{ type: "text", text: `Successfully replaced in ${input.path}.\nchecksum:${input.checksum}${warning}` }], details: { diff: input.diff, firstChangedLine: input.editMeta.firstChangedLine, changedRegions: input.editMeta.changedRegions, checksum: input.checksum, metrics: metrics("applied", input.editMeta, input.warnings?.length) } };
 }

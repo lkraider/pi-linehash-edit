@@ -4,8 +4,8 @@ import { resolveTarget } from "./fs-write";
 import { MAX_BYTES } from "./constants";
 import { abortIf, errCode } from "./utils";
 
-const DOMAIN = Buffer.from("pi-linehash-edit\0snapshot-v2\0");
-const SNAP_RE = /^s2:[A-Za-z0-9_-]{22}$/;
+const DOMAIN = Buffer.from("pi-linehash-edit\0checksum-v1\0");
+const CHECKSUM_RE = /^[A-Za-z0-9_-]{22}$/;
 
 function length(value: Uint8Array): Buffer {
   const result = Buffer.allocUnsafe(8);
@@ -13,9 +13,9 @@ function length(value: Uint8Array): Buffer {
   return result;
 }
 
-export function snapshotTag(canonicalPath: string, raw: Uint8Array): string {
+export function fileChecksum(canonicalPath: string, raw: Uint8Array): string {
   const path = Buffer.from(canonicalPath);
-  const digest = createHash("sha256")
+  return createHash("sha256")
     .update(DOMAIN)
     .update(length(path))
     .update(path)
@@ -24,20 +24,19 @@ export function snapshotTag(canonicalPath: string, raw: Uint8Array): string {
     .digest()
     .subarray(0, 16)
     .toString("base64url");
-  return `s2:${digest}`;
 }
 
-export function assertSnapshot(value: unknown): asserts value is string {
-  if (typeof value !== "string" || !SNAP_RE.test(value)) {
-    throw new Error('[E_BAD_SNAPSHOT] "snapshot" must be s2: followed by exactly 22 base64url characters.');
+export function assertChecksum(value: unknown): asserts value is string {
+  if (typeof value !== "string" || !CHECKSUM_RE.test(value)) {
+    throw new Error('[E_BAD_CHECKSUM] "checksum" must be exactly 22 base64url characters.');
   }
 }
 
-export function sameSnapshot(left: string, right: string): boolean {
-  return SNAP_RE.test(left) && SNAP_RE.test(right) && timingSafeEqual(Buffer.from(left), Buffer.from(right));
+export function sameChecksum(left: string, right: string): boolean {
+  return CHECKSUM_RE.test(left) && CHECKSUM_RE.test(right) && timingSafeEqual(Buffer.from(left), Buffer.from(right));
 }
 
-export async function readSnapshot(path: string, canonicalPath?: string, signal?: AbortSignal): Promise<{ canonicalPath: string; raw: Buffer; snapshot: string }> {
+export async function readChecksum(path: string, canonicalPath?: string, signal?: AbortSignal): Promise<{ canonicalPath: string; raw: Buffer; checksum: string }> {
   const target = canonicalPath ?? await resolveTarget(path);
   for (let attempt = 0; attempt < 3; attempt++) {
     abortIf(signal);
@@ -53,7 +52,7 @@ export async function readSnapshot(path: string, canonicalPath?: string, signal?
       catch (error) { if (errCode(error) === "ENOENT") continue; throw error; }
       abortIf(signal);
       if (before.dev === after.dev && before.ino === after.ino && before.size === after.size && before.mtimeNs === after.mtimeNs && before.ctimeNs === after.ctimeNs && after.dev === live.dev && after.ino === live.ino && after.size === live.size && after.mtimeNs === live.mtimeNs && after.ctimeNs === live.ctimeNs) {
-        return { canonicalPath: target, raw, snapshot: snapshotTag(target, raw) };
+        return { canonicalPath: target, raw, checksum: fileChecksum(target, raw) };
       }
     } finally { await handle.close(); }
   }

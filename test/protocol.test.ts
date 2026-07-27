@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { chmod, mkdtemp, readFile, rm, stat, symlink, truncate, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { snapshotTag, readSnapshot } from "../src/snapshot";
+import { fileChecksum, readChecksum } from "../src/checksum";
 import { applyEdits, parseEdits } from "../src/line-edit";
 import { fmtReadPreviewStreamed } from "../src/read";
 import { buildToolDef, execPipeline } from "../src/replace";
@@ -12,39 +12,39 @@ import { toCwd } from "../src/paths";
 import { MAX_BYTES } from "../src/constants";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } from "@earendil-works/pi-coding-agent";
 
-const snapshotHook = vi.hoisted(() => ({ beforeRead: undefined as undefined | (() => void | Promise<void>) }));
-vi.mock("../src/snapshot", async importOriginal => {
-  const original = await importOriginal<typeof import("../src/snapshot")>();
-  return { ...original, readSnapshot: async (...args: Parameters<typeof original.readSnapshot>) => { await snapshotHook.beforeRead?.(); return original.readSnapshot(...args); } };
+const checksumHook = vi.hoisted(() => ({ beforeRead: undefined as undefined | (() => void | Promise<void>) }));
+vi.mock("../src/checksum", async importOriginal => {
+  const original = await importOriginal<typeof import("../src/checksum")>();
+  return { ...original, readChecksum: async (...args: Parameters<typeof original.readChecksum>) => { await checksumHook.beforeRead?.(); return original.readChecksum(...args); } };
 });
 
 const dirs: string[] = [];
 async function fixture(content: string | Buffer, name = "file.txt") {
-  const dir = await mkdtemp(join(tmpdir(), "snapshot-edit-")); dirs.push(dir);
+  const dir = await mkdtemp(join(tmpdir(), "checksum-edit-")); dirs.push(dir);
   const path = join(dir, name); await writeFile(path, content); return { dir, path };
 }
 afterEach(async () => { await Promise.all(dirs.splice(0).map(dir => rm(dir, { recursive: true, force: true }))); });
 
-describe("snapshot v2", () => {
+describe("checksum", () => {
   it("has fixed shape, is deterministic, path-bound, and byte-sensitive", () => {
-    const a = snapshotTag("/a", Buffer.from("x"));
-    expect(a).toMatch(/^s2:[A-Za-z0-9_-]{22}$/);
-    expect(snapshotTag("/a", Buffer.from("x"))).toBe(a);
-    expect(snapshotTag("/b", Buffer.from("x"))).not.toBe(a);
-    for (const raw of ["x ", "x\n", "\ufeffx", "x\r\n"]) expect(snapshotTag("/a", Buffer.from(raw))).not.toBe(a);
-    expect(snapshotTag("/a", Buffer.from("collision-4-0-66"))).not.toBe(snapshotTag("/a", Buffer.from("collision-4-0-170")));
+    const a = fileChecksum("/a", Buffer.from("x"));
+    expect(a).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(fileChecksum("/a", Buffer.from("x"))).toBe(a);
+    expect(fileChecksum("/b", Buffer.from("x"))).not.toBe(a);
+    for (const raw of ["x ", "x\n", "\ufeffx", "x\r\n"]) expect(fileChecksum("/a", Buffer.from(raw))).not.toBe(a);
+    expect(fileChecksum("/a", Buffer.from("collision-4-0-66"))).not.toBe(fileChecksum("/a", Buffer.from("collision-4-0-170")));
   });
 
   it("binds identical bytes to distinct canonical targets", async () => {
     const { dir, path } = await fixture("same", "a.txt");
     const other = join(dir, "b.txt"); await writeFile(other, "same");
-    expect((await readSnapshot(path)).snapshot).not.toBe((await readSnapshot(other)).snapshot);
+    expect((await readChecksum(path)).checksum).not.toBe((await readChecksum(other)).checksum);
   });
 
-  it("rejects oversized snapshots before reading file contents", async () => {
+  it("rejects oversized files before reading contents", async () => {
     const { path } = await fixture("");
     await truncate(path, MAX_BYTES + 1);
-    await expect(readSnapshot(path)).rejects.toThrow("E_FILE_TOO_LARGE");
+    await expect(readChecksum(path)).rejects.toThrow("E_FILE_TOO_LARGE");
   });
 
   it("normalizes model-added path prefixes", () => {
@@ -54,14 +54,14 @@ describe("snapshot v2", () => {
 
   it("binds symlink and target to one canonical mutation target", async () => {
     const { dir, path } = await fixture("same"); const link = join(dir, "link"); await symlink(path, link);
-    expect((await readSnapshot(link)).snapshot).toBe((await readSnapshot(path)).snapshot);
+    expect((await readChecksum(link)).checksum).toBe((await readChecksum(path)).checksum);
   });
 
-  it("full and paginated reads carry one whole-file snapshot", async () => {
+  it("full and paginated reads carry one whole-file checksum", async () => {
     const { path } = await fixture("a\nb\nc\n");
     const full = await fmtReadPreviewStreamed(path, {}), partial = await fmtReadPreviewStreamed(path, { offset: 2, limit: 1 });
-    expect(full.snapshot).toBe(partial.snapshot);
-    expect(full.text).toContain(`snapshot:${full.snapshot}`);
+    expect(full.checksum).toBe(partial.checksum);
+    expect(full.text).toContain(`checksum:${full.checksum}`);
     expect(partial.text).toContain("2│b");
   });
 });
@@ -112,62 +112,62 @@ describe("replace guard", () => {
       "a\nb \nc",
     ];
     for (const mutation of mutations) {
-      const { path, dir } = await fixture("a\nb\nc"); const snap = await readSnapshot(path);
+      const { path, dir } = await fixture("a\nb\nc"); const read = await readChecksum(path);
       await writeFile(path, mutation);
-      await expect(execPipeline({ path, snapshot: snap.snapshot, changes: [{ range: [1, 1], content_lines: ["A"] }] }, dir, 4)).rejects.toThrow("E_STALE_SNAPSHOT");
+      await expect(execPipeline({ path, checksum: read.checksum, changes: [{ range: [1, 1], content_lines: ["A"] }] }, dir, 4)).rejects.toThrow("E_STALE_CHECKSUM");
     }
   });
 
   it("validates edits before file I/O and does not warn that a noop normalizes endings", async () => {
-    await expect(execPipeline({ path: "/missing", snapshot: snapshotTag("/missing", Buffer.alloc(0)), changes: [null] } as any, ".", 4)).rejects.toThrow("E_BAD_SHAPE");
-    const { path, dir } = await fixture("a\r\nb\n"); const snap = await readSnapshot(path);
-    const result = await execPipeline({ path, snapshot: snap.snapshot, changes: [{ range: [1, 1], content_lines: ["a"] }] }, dir, 4);
+    await expect(execPipeline({ path: "/missing", checksum: fileChecksum("/missing", Buffer.alloc(0)), changes: [null] } as any, ".", 4)).rejects.toThrow("E_BAD_SHAPE");
+    const { path, dir } = await fixture("a\r\nb\n"); const read = await readChecksum(path);
+    const result = await execPipeline({ path, checksum: read.checksum, changes: [{ range: [1, 1], content_lines: ["a"] }] }, dir, 4);
     expect(result.warnings).toEqual([]);
   });
 
-  it("is stateless and returns the new snapshot after atomic write", async () => {
-    const { path, dir } = await fixture("a\nb"); const snap = await readSnapshot(path);
+  it("is stateless and returns the new checksum after atomic write", async () => {
+    const { path, dir } = await fixture("a\nb"); const read = await readChecksum(path);
     const tool = buildToolDef() as any;
-    const result = await tool.execute("id", { path, snapshot: snap.snapshot, changes: [{ range: [2, 2], content_lines: ["B"] }] }, undefined, undefined, { cwd: dir });
+    const result = await tool.execute("id", { path, checksum: read.checksum, changes: [{ range: [2, 2], content_lines: ["B"] }] }, undefined, undefined, { cwd: dir });
     expect(await readFile(path, "utf8")).toBe("a\nB");
-    expect(result.details.snapshot).toBe((await readSnapshot(path)).snapshot);
+    expect(result.details.checksum).toBe((await readChecksum(path)).checksum);
   });
 
-  it("rechecks the snapshot immediately before writing", async () => {
-    const { path, dir } = await fixture("a\nb"); const snap = await readSnapshot(path);
+  it("rechecks the checksum immediately before writing", async () => {
+    const { path, dir } = await fixture("a\nb"); const read = await readChecksum(path);
     let reads = 0;
-    snapshotHook.beforeRead = async () => { if (++reads === 2) await writeFile(path, "raced"); };
+    checksumHook.beforeRead = async () => { if (++reads === 2) await writeFile(path, "raced"); };
     try {
-      await expect((buildToolDef() as any).execute("id", { path, snapshot: snap.snapshot, changes: [{ range: [1, 1], content_lines: ["A"] }] }, undefined, undefined, { cwd: dir })).rejects.toThrow("E_STALE_SNAPSHOT");
+      await expect((buildToolDef() as any).execute("id", { path, checksum: read.checksum, changes: [{ range: [1, 1], content_lines: ["A"] }] }, undefined, undefined, { cwd: dir })).rejects.toThrow("E_STALE_CHECKSUM");
       expect(await readFile(path, "utf8")).toBe("raced");
-    } finally { snapshotHook.beforeRead = undefined; }
+    } finally { checksumHook.beforeRead = undefined; }
   });
 
   it("edits symlink targets consistently and preserves permissions", async () => {
     const { dir, path } = await fixture("a", "target.txt"); const link = join(dir, "link.txt"); await symlink(path, link); await chmod(path, 0o640);
-    const snap = await readSnapshot(link);
-    const result = await (buildToolDef() as any).execute("id", { path: link, snapshot: snap.snapshot, changes: [{ range: [1, 1], content_lines: ["A"] }] }, undefined, undefined, { cwd: dir });
+    const read = await readChecksum(link);
+    const result = await (buildToolDef() as any).execute("id", { path: link, checksum: read.checksum, changes: [{ range: [1, 1], content_lines: ["A"] }] }, undefined, undefined, { cwd: dir });
     expect(await readFile(path, "utf8")).toBe("A");
     expect((await stat(path)).mode & 0o777).toBe(0o640);
-    expect(result.details.snapshot).toBe((await readSnapshot(path)).snapshot);
+    expect(result.details.checksum).toBe((await readChecksum(path)).checksum);
   });
 
   it("rewrites invalid UTF-8 explicitly and warns on mixed endings", async () => {
     const invalid = await fixture(Buffer.from([0x61, 0xff])); const invalidRead = await fmtReadPreviewStreamed(invalid.path, {});
     expect(invalidRead.hadUtf8DecodeErrors).toBe(true);
-    const invalidResult = await (buildToolDef() as any).execute("id", { path: invalid.path, snapshot: invalidRead.snapshot, changes: [{ range: [1, 1], content_lines: ["ok"] }] }, undefined, undefined, { cwd: invalid.dir });
+    const invalidResult = await (buildToolDef() as any).execute("id", { path: invalid.path, checksum: invalidRead.checksum, changes: [{ range: [1, 1], content_lines: ["ok"] }] }, undefined, undefined, { cwd: invalid.dir });
     expect(invalidResult.content[0].text).toContain("rewrote the file as UTF-8");
     expect(await readFile(invalid.path, "utf8")).toBe("ok");
-    const mixed = await fixture("a\r\nb\n"); const mixedSnap = await readSnapshot(mixed.path);
-    const result = await (buildToolDef() as any).execute("id", { path: mixed.path, snapshot: mixedSnap.snapshot, changes: [{ range: [1, 1], content_lines: ["A"] }] }, undefined, undefined, { cwd: mixed.dir });
+    const mixed = await fixture("a\r\nb\n"); const mixedRead = await readChecksum(mixed.path);
+    const result = await (buildToolDef() as any).execute("id", { path: mixed.path, checksum: mixedRead.checksum, changes: [{ range: [1, 1], content_lines: ["A"] }] }, undefined, undefined, { cwd: mixed.dir });
     expect(result.content[0].text).toContain("W_MIXED_EOL");
     expect(await readFile(mixed.path, "utf8")).toBe("A\r\nb\r\n");
   });
 
-  it("rejects missing and malformed snapshots", async () => {
+  it("rejects missing and malformed checksums", async () => {
     const tool = buildToolDef() as any;
-    await expect(tool.execute("id", { path: "x", changes: [{ range: [1, 1], content_lines: [] }] }, undefined, undefined, { cwd: "." })).rejects.toThrow("E_BAD_SNAPSHOT");
-    await expect(tool.execute("id", { path: "x", snapshot: "s2:bad", changes: [{ range: [1, 1], content_lines: [] }] }, undefined, undefined, { cwd: "." })).rejects.toThrow("E_BAD_SNAPSHOT");
+    await expect(tool.execute("id", { path: "x", changes: [{ range: [1, 1], content_lines: [] }] }, undefined, undefined, { cwd: "." })).rejects.toThrow("E_BAD_CHECKSUM");
+    await expect(tool.execute("id", { path: "x", checksum: "bad", changes: [{ range: [1, 1], content_lines: [] }] }, undefined, undefined, { cwd: "." })).rejects.toThrow("E_BAD_CHECKSUM");
   });
 });
 
@@ -201,7 +201,7 @@ describe("sparse auto-read allocation", () => {
 
   it("preserves hard caps while marking omitted mandatory output", () => {
     const content = Array.from({ length: 5000 }, (_, i) => `${i + 1}-${"x".repeat(100)}`).join("\n");
-    const preview = sparsePreview(content, snapshotTag("/x", Buffer.from(content)), [{ first: 1, last: 5000 }]);
+    const preview = sparsePreview(content, fileChecksum("/x", Buffer.from(content)), [{ first: 1, last: 5000 }]);
     expect(Buffer.byteLength(preview)).toBeLessThanOrEqual(DEFAULT_MAX_BYTES);
     expect(preview.split("\n").length).toBeLessThanOrEqual(DEFAULT_MAX_LINES);
     expect(preview).toContain("Changed regions omitted by cap: 1-5000");
@@ -210,23 +210,23 @@ describe("sparse auto-read allocation", () => {
   it("does not spend row budget on distant-window separators", () => {
     const content = Array.from({ length: 3000 }, (_, i) => `line ${i + 1}`).join("\n");
     const regions = Array.from({ length: 1500 }, (_, i) => ({ first: i * 2 + 1, last: i * 2 + 1 }));
-    const preview = sparsePreview(content, snapshotTag("/x", Buffer.from(content)), regions);
+    const preview = sparsePreview(content, fileChecksum("/x", Buffer.from(content)), regions);
     expect(preview).toContain("2999│line 2999");
     expect(preview).not.toContain("omitted");
     expect(preview.split("\n").length).toBeLessThanOrEqual(DEFAULT_MAX_LINES);
   });
 
-  it("deduplicates only the matching replace snapshot", async () => {
+  it("deduplicates only the matching replace checksum", async () => {
     const { path, dir } = await fixture("a");
-    const snapshot = (await readSnapshot(path)).snapshot;
+    const checksum = (await readChecksum(path)).checksum;
     let toolResult: any;
     extension({ registerTool() {}, registerCommand() {}, on(name: string, handler: any) { if (name === "tool_result") toolResult = handler; }, getActiveTools() { return []; }, setActiveTools() {} } as any);
-    const run = async (shown: string) => toolResult({ toolName: "replace", isError: false, input: { path }, details: { changedRegions: [{ first: 1, last: 1 }] }, content: [{ type: "text", text: `snapshot:${shown}` }] }, { cwd: dir });
-    const same = (await run(snapshot)).content.map((part: any) => part.text).join("\n");
-    expect(same.split(`snapshot:${snapshot}`).length - 1).toBe(1);
-    const prior = snapshotTag(path, Buffer.from("prior"));
+    const run = async (shown: string) => toolResult({ toolName: "replace", isError: false, input: { path }, details: { changedRegions: [{ first: 1, last: 1 }] }, content: [{ type: "text", text: `checksum:${shown}` }] }, { cwd: dir });
+    const same = (await run(checksum)).content.map((part: any) => part.text).join("\n");
+    expect(same.split(`checksum:${checksum}`).length - 1).toBe(1);
+    const prior = fileChecksum(path, Buffer.from("prior"));
     const changed = (await run(prior)).content.map((part: any) => part.text).join("\n");
-    expect(changed).toContain(`snapshot:${prior}`);
-    expect(changed).toContain(`snapshot:${snapshot}`);
+    expect(changed).toContain(`checksum:${prior}`);
+    expect(changed).toContain(`checksum:${checksum}`);
   });
 });
