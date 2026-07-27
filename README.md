@@ -215,7 +215,7 @@ Install the package from npm, the Node Package Manager registry:
 pi install npm:pi-linehash-edit
 ```
 
-When a session starts, the extension replaces pi's `read` tool, registers `replace`, and disables pi's built-in `edit` tool.
+Requires pi 0.79.0 or newer. When a session starts, the extension replaces pi's `read` tool, registers `replace`, and disables pi's built-in `edit` tool.
 
 ## Configuration
 
