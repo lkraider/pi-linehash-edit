@@ -16,10 +16,10 @@ import { loadP, loadGuide } from "./prompts";
 const contentLines = Type.Array(Type.String({ pattern: "^[^\\r\\n]*$" }), { description: "literal replacement lines without line│ prefixes" });
 const range = Type.Array(Type.Integer({ minimum: 1 }), { minItems: 2, maxItems: 2, description: "inclusive numeric [start, end]" });
 const change = Type.Object({ range, content_lines: contentLines }, { additionalProperties: false });
-export const editToolSchema = Type.Object({ path: Type.String(), snapshot: Type.String({ pattern: "^s2:[A-Za-z0-9_-]{22}$" }), changes: Type.Array(change, { minItems: 1 }) }, { additionalProperties: false });
+const editToolSchema = Type.Object({ path: Type.String(), snapshot: Type.String({ pattern: "^s2:[A-Za-z0-9_-]{22}$" }), changes: Type.Array(change, { minItems: 1 }) }, { additionalProperties: false });
 export type ReqParams = { path: string; snapshot: string; changes: RawEdit[] };
 export type ReplaceDetails = { diff: string; firstChangedLine?: number; changedRegions?: { first: number; last: number }[]; snapshot?: string; classification?: "noop"; metrics?: RMetrics };
-type PipelineResult = { path: string; originalNormalized: string; result: string; rawOutput: string; warnings: string[]; noopEdits?: { editIndex: number; loc: string; currentContent: string }[]; firstChangedLine?: number; lastChangedLine?: number; changedRegions: { first: number; last: number }[]; totalAddedLines: number; totalRemovedLines: number; initialSnapshot: string };
+type PipelineResult = { path: string; originalNormalized: string; result: string; rawOutput: string; warnings: string[]; noopEdits?: number[]; firstChangedLine?: number; lastChangedLine?: number; changedRegions: { first: number; last: number }[]; totalAddedLines: number; totalRemovedLines: number; initialSnapshot: string };
 const ROOT = new Set(["path", "snapshot", "changes"]);
 
 function assertNotLegacy(request: unknown): void {
@@ -28,7 +28,7 @@ function assertNotLegacy(request: unknown): void {
   }
 }
 
-export function assertReq(request: unknown): asserts request is ReqParams {
+function assertReq(request: unknown): asserts request is ReqParams {
   assertNotLegacy(request);
   if (!isRec(request)) throw new Error("[E_BAD_SHAPE] Replace request must be an object.");
   rejectUnknownFields(request, ROOT, "Replace request");
@@ -50,18 +50,14 @@ export async function execPipeline(params: ReqParams, cwd: string, accessMode: n
   if (applied.content !== file.normalized && file.hadUtf8DecodeErrors) warnings.push("Non-UTF-8 bytes were shown as U+FFFD; this edit rewrote the file as UTF-8.");
   if (applied.content !== file.normalized && file.hadMixedEndings) warnings.push(`[W_MIXED_EOL] File has mixed line endings; edit normalizes them to ${file.originalEnding === "\r\n" ? "CRLF" : "LF"}.`);
   let totalAddedLines = 0, totalRemovedLines = 0;
-  const noops = new Set(applied.noopEdits?.map(n => n.editIndex));
+  const noops = new Set(applied.noopEdits);
   edits.forEach((edit, i) => { if (!noops.has(i)) { totalAddedLines += edit.content_lines.length; totalRemovedLines += edit.range[1] - edit.range[0] + 1; } });
   return { path: params.path, originalNormalized: file.normalized, result: applied.content, rawOutput, warnings, noopEdits: applied.noopEdits, firstChangedLine: applied.firstChangedLine, lastChangedLine: applied.lastChangedLine, changedRegions: applied.changedRegions, totalAddedLines, totalRemovedLines, initialSnapshot: file.snapshot };
 }
 
-export async function compPreview(request: unknown, cwd: string): Promise<{ diff: string } | { error: string }> {
-  try { assertReq(request); const p = await execPipeline(request, cwd, constants.R_OK); return { diff: shouldSkipDiff(p.originalNormalized.split("\n").length, p.result.split("\n").length) ? "" : genDiff(p.originalNormalized, p.result, 4).diff }; }
-  catch (error) { return { error: error instanceof Error ? error.message : String(error) }; }
-}
 
 export function buildToolDef(opts: { autoRead?: boolean } = {}): ToolDefinition<any, ReplaceDetails> {
-  const guidance = opts.autoRead ? "A fresh snapshot is returned automatically." : "Read again for follow-up edits.";
+  const guidance = opts.autoRead ? "After `replace`, auto-read returns a fresh snapshot automatically." : "Use `read` again before follow-up `replace` calls.";
   return { name: "replace", label: "Replace", description: loadP("../prompts/replace.md", { AUTO_READ_GUIDANCE: guidance }), promptSnippet: loadP("../prompts/replace-snippet.md"), promptGuidelines: loadGuide("../prompts/replace-guidelines.md", { AUTO_READ_GUIDANCE: guidance }), parameters: editToolSchema,
     prepareArguments(args) { assertNotLegacy(args); return args as any; },
     async execute(_id, params, signal, _update, ctx) {
@@ -69,7 +65,7 @@ export function buildToolDef(opts: { autoRead?: boolean } = {}): ToolDefinition<
       return withFileMutationQueue(target, async () => {
         const p = await execPipeline(params, ctx.cwd, constants.R_OK | constants.W_OK, signal, target);
         const meta: RMeta = { editsAttempted: params.changes.length, noopEditsCount: p.noopEdits?.length ?? 0, firstChangedLine: p.firstChangedLine, lastChangedLine: p.lastChangedLine, changedRegions: p.changedRegions, addedLines: p.totalAddedLines, removedLines: p.totalRemovedLines };
-        if (p.originalNormalized === p.result) return buildNoop({ path: p.path, snapshot: p.initialSnapshot, editMeta: meta, warnings: p.warnings });
+        if (p.originalNormalized === p.result) return buildNoop({ path: p.path, snapshot: p.initialSnapshot, editMeta: meta });
         abortIf(signal);
         const current = await readSnapshot(target, target, signal);
         if (!sameSnapshot(params.snapshot, current.snapshot)) throw new Error(`[E_STALE_SNAPSHOT] ${p.path} changed during replace; nothing was written.`);

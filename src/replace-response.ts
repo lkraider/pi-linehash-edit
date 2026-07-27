@@ -11,8 +11,8 @@ function metrics(kind: "applied" | "noop", meta: RMeta, warnings = 0): RMetrics 
   return result;
 }
 
-export function buildNoop(input: { path: string; snapshot: string; editMeta: RMeta; warnings?: string[] }): Result {
-  return { content: [{ type: "text", text: `No changes made to ${input.path}.\nsnapshot:${input.snapshot}` }], details: { diff: "", snapshot: input.snapshot, classification: "noop", metrics: metrics("noop", input.editMeta, input.warnings?.length) } };
+export function buildNoop(input: { path: string; snapshot: string; editMeta: RMeta }): Result {
+  return { content: [{ type: "text", text: `No changes made to ${input.path}.\nsnapshot:${input.snapshot}` }], details: { diff: "", snapshot: input.snapshot, classification: "noop", metrics: metrics("noop", input.editMeta) } };
 }
 
 export function buildChanged(input: { path: string; warnings?: string[]; snapshot: string; editMeta: RMeta; diff: string }): Result {

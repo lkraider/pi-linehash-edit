@@ -2,15 +2,15 @@ import { CONTENT_LINES_NOT_STRING_MSG } from "../constants";
 import { abortIf, firstNonEmpty, isRec, lastNonEmpty, rejectUnknownFields, visLines } from "../utils";
 
 export type RawEdit = { range: [number, number]; content_lines: string[] };
-export type ParsedEdit = RawEdit;
-export type ChangedRegion = { first: number; last: number };
-export type ApplyResult = {
+type ParsedEdit = RawEdit;
+type ChangedRegion = { first: number; last: number };
+type ApplyResult = {
   content: string;
   firstChangedLine?: number;
   lastChangedLine?: number;
   changedRegions: ChangedRegion[];
   warnings?: string[];
-  noopEdits?: { editIndex: number; loc: string; currentContent: string }[];
+  noopEdits?: number[];
 };
 
 const KEYS = new Set(["range", "content_lines"]);
@@ -62,7 +62,7 @@ export function applyEdits(content: string, edits: ParsedEdit[], signal?: AbortS
     if (end > lineCount) throw new Error(`[E_BAD_RANGE] Edit ${index} range ends at ${end}, but file has ${lineCount} line(s).`);
     const current = lines.slice(start - 1, end);
     if (current.length === edit.content_lines.length && current.every((line, i) => line === edit.content_lines[i])) {
-      noopEdits.push({ editIndex: index, loc: `${start}-${end}`, currentContent: current.join("\n") });
+      noopEdits.push(index);
       return null;
     }
     const before = lines[start - 2];
@@ -100,7 +100,7 @@ export function formatRegion(lines: string[], startLine = 1): string {
   return lines.map((line, index) => `${startLine + index}│${line}`).join("\n");
 }
 
-export function changedRange(original: string, result: string): { firstChangedLine: number; lastChangedLine: number } | null {
+function changedRange(original: string, result: string): { firstChangedLine: number; lastChangedLine: number } | null {
   if (original === result) return null;
   const a = original.split("\n"), b = result.split("\n");
   let prefix = 0;
