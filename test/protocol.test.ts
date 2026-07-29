@@ -94,6 +94,21 @@ describe("numeric edit", () => {
     expect(() => applyEdits("a\nb", parseEdits([{ range: [2, 2], content_lines: ["1│a"] }]))).toThrow("E_COPIED_ROW");
   });
 
+  it("rejects copied rows even when the copied text was edited", () => {
+    // Edited copies used to slip the verbatim-equality guard and get written into the file — corruption.
+    expect(() => applyEdits("hello", parseEdits([{ range: [1, 1], content_lines: ["1│goodbye"] }]))).toThrow("E_COPIED_ROW");
+    // The deepseek failure mode: whole-region echo of read output.
+    expect(() => applyEdits("a\nb\nc", parseEdits([{ range: [1, 3], content_lines: ["1│A", "2│B", "3│C"] }]))).toThrow("E_COPIED_ROW");
+  });
+
+  it("keeps legitimate content that happens to start with digits then a bar", () => {
+    // Counterfactuals a naive "^\\d+│" or "prefix-in-range" guard would wrongly reject.
+    // Out-of-position number: real content, not a copy of any read row.
+    expect(applyEdits("x\ny\nz", parseEdits([{ range: [2, 2], content_lines: ["42│answer"] }])).content).toBe("x\n42│answer\nz");
+    // A file that genuinely uses "N│" columns must stay editable.
+    expect(applyEdits("1│Alice\n2│Bob\n3│Carol", parseEdits([{ range: [2, 2], content_lines: ["2│Robert"] }])).content).toBe("1│Alice\n2│Robert\n3│Carol");
+  });
+
   it("edits empty files and preserves terminal newline", () => {
     expect(applyEdits("", parseEdits([{ range: [1, 1], content_lines: ["x"] }])).content).toBe("x");
     expect(applyEdits("a\n", parseEdits([{ range: [1, 1], content_lines: ["b"] }])).content).toBe("b\n");

@@ -37,11 +37,13 @@ export function parseEdits(edits: RawEdit[]): ParsedEdit[] {
 
 function assertNoCopiedRows(edits: ParsedEdit[], lines: string[]): void {
   for (const [editIndex, edit] of edits.entries()) for (const [lineIndex, content] of edit.content_lines.entries()) {
-    const match = /^(\d+)│(.*)$/.exec(content);
-    if (!match) continue;
-    const row = Number(match[1]);
-    if (row >= 1 && row <= lines.length && lines[row - 1] === match[2]) {
-      throw new Error(`[E_COPIED_ROW] Edit ${editIndex} content_lines[${lineIndex}] contains a read row. Remove the "line│" prefix.`);
+    const m = /^(\d+)│(.*)$/.exec(content);
+    if (!m) continue;
+    // src === m[2] alone misses edited copies; the range clause covers them. startsWith guard so a
+    // file whose own lines begin "N│" stays editable rather than mistaken for a kept read prefix.
+    const src = lines[Number(m[1]) - 1];
+    if (src !== undefined && !src.startsWith(`${m[1]}│`) && (src === m[2] || Number(m[1]) === edit.range[0] + lineIndex)) {
+      throw new Error(`[E_COPIED_ROW] Edit ${editIndex} content_lines[${lineIndex}] keeps the "${m[1]}│" read prefix. Send only the line content.`);
     }
   }
 }
