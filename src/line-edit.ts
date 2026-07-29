@@ -101,7 +101,7 @@ export function formatRegion(lines: string[], startLine = 1): string {
   return lines.map((line, index) => `${startLine + index}│${line}`).join("\n");
 }
 
-function changedRange(original: string, result: string): { firstChangedLine: number; lastChangedLine: number } | null {
+export function changedRange(original: string, result: string): { firstChangedLine: number; lastChangedLine: number } | null {
   if (original === result) return null;
   const a = original.split("\n"), b = result.split("\n");
   let prefix = 0;
@@ -109,5 +109,5 @@ function changedRange(original: string, result: string): { firstChangedLine: num
   let suffix = 0;
   while (suffix < Math.min(a.length, b.length) - prefix && a[a.length - 1 - suffix] === b[b.length - 1 - suffix]) suffix++;
   const firstChangedLine = prefix + 1;
-  return { firstChangedLine, lastChangedLine: Math.max(firstChangedLine, b.length - suffix, Math.min(firstChangedLine, visLines(result).length)) };
+  return { firstChangedLine, lastChangedLine: Math.max(firstChangedLine, b.length - suffix) };
 }

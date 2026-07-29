@@ -3,7 +3,8 @@ import { chmod, mkdtemp, readFile, rm, stat, symlink, truncate, writeFile } from
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileChecksum, readChecksum } from "../src/checksum";
-import { applyEdits, parseEdits } from "../src/line-edit";
+import { applyEdits, parseEdits, changedRange } from "../src/line-edit";
+import { visLines } from "../src/utils";
 import { fmtReadPreviewStreamed, sparsePreview, sparseRows } from "../src/read";
 import { buildToolDef, execPipeline } from "../src/replace";
 import { genDiff, decodeNormalized } from "../src/replace-diff";
@@ -113,6 +114,178 @@ describe("numeric edit", () => {
     expect(applyEdits("", parseEdits([{ range: [1, 1], content_lines: ["x"] }])).content).toBe("x");
     expect(applyEdits("a\n", parseEdits([{ range: [1, 1], content_lines: ["b"] }])).content).toBe("b\n");
     expect(() => applyEdits("a\n", parseEdits([{ range: [2, 2], content_lines: ["x"] }]))).toThrow("E_BAD_RANGE");
+  });
+});
+
+describe("applyEdits properties", () => {
+  // Safety net for the P2 refactor (collapse the three sorts / repeated splits). Everything below is
+  // pinned EXCEPT warning emission order, which the refactor is allowed to change (asserted as a set).
+  const ALPHA = ["a", "b", "c", "d", ""]; // duplicates + empty lines so noop/dup/deletion all fire
+  const rng = (seed: number) => () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 0x100000000; };
+  const pick = <T>(r: () => number, xs: T[]) => xs[Math.floor(r() * xs.length)]!;
+  const byRegion = (a: { first: number }, b: { first: number }) => a.first - b.first;
+  const nonEmpty = (xs: string[]) => xs.filter(x => x.length);
+  const firstDiff = (a: string[], b: string[]) => { for (let i = 0; i < Math.max(a.length, b.length); i++) if (a[i] !== b[i]) return i + 1; return undefined; };
+  const lineCountOf = (content: string) => Math.max(1, visLines(content).length);
+  const isNoop = (lines: string[], e: Edit) => { const t = lines.slice(e.range[0] - 1, e.range[1]); return t.length === e.content_lines.length && t.every((l, k) => l === e.content_lines[k]); };
+  type Edit = { range: [number, number]; content_lines: string[] };
+
+  const genContent = (r: () => number) => { const n = Math.floor(r() * 7); const body = Array.from({ length: n }, () => pick(r, ALPHA)).join("\n"); return n > 0 && r() < 0.5 ? body + "\n" : body; };
+  function genDisjointEdits(r: () => number, lineCount: number): Edit[] {
+    const edits: Edit[] = [];
+    for (let pos = 1; pos <= lineCount;) {
+      if (r() < 0.45) { pos += 1 + Math.floor(r() * 2); continue; }
+      const start = pos, end = Math.min(lineCount, start + Math.floor(r() * 3));
+      edits.push({ range: [start, end], content_lines: Array.from({ length: Math.floor(r() * 4) }, () => pick(r, ALPHA)) });
+      pos = end + 1;
+    }
+    return edits;
+  }
+  const shuffle = (r: () => number, xs: Edit[]) => { const a = [...xs]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j]!, a[i]!]; } return a; };
+  // Independent oracle: walk the original lines, substituting each disjoint range in ascending order.
+  function oracle(content: string, edits: Edit[]): string {
+    const lines = content.split("\n"), out: string[] = []; let cursor = 1;
+    for (const e of [...edits].sort((a, b) => a.range[0] - b.range[0])) {
+      for (; cursor < e.range[0]; cursor++) out.push(lines[cursor - 1]!);
+      out.push(...e.content_lines); cursor = e.range[1] + 1;
+    }
+    for (; cursor <= lines.length; cursor++) out.push(lines[cursor - 1]!);
+    return out.join("\n");
+  }
+  // Region formula restated to lock it across the refactor; output correctness is proven independently
+  // by the content oracle above, so this only guards that regions keep tracking the same positions.
+  function oracleRegions(content: string, edits: Edit[]) {
+    const lines = content.split("\n"), outCount = Math.max(1, visLines(oracle(content, edits)).length);
+    const regions: { first: number; last: number }[] = [];
+    let shift = 0;
+    for (const e of edits.filter(x => !isNoop(lines, x)).sort((a, b) => a.range[0] - b.range[0])) {
+      const start = e.range[0] + shift, last = e.content_lines.length ? start + e.content_lines.length - 1 : Math.max(1, start);
+      regions.push({ first: Math.min(start, outCount), last: Math.min(last, outCount) });
+      shift += e.content_lines.length - (e.range[1] - e.range[0] + 1);
+    }
+    return regions;
+  }
+
+  it("content matches an independent oracle and is invariant under input reordering", () => {
+    const r = rng(1);
+    for (let iter = 0; iter < 500; iter++) {
+      const content = genContent(r), edits = genDisjointEdits(r, lineCountOf(content));
+      const applied = applyEdits(content, parseEdits(edits));
+      expect(applied.content).toBe(oracle(content, edits));
+      const reordered = applyEdits(content, parseEdits(shuffle(r, edits)));
+      expect(reordered.content).toBe(applied.content);
+      expect([...reordered.changedRegions].sort(byRegion)).toEqual([...applied.changedRegions].sort(byRegion));
+    }
+  });
+
+  it("flags exactly the edits whose target already equals the replacement, and excludes them from regions", () => {
+    const r = rng(2);
+    for (let iter = 0; iter < 500; iter++) {
+      const content = genContent(r), lines = content.split("\n"), edits = genDisjointEdits(r, lineCountOf(content));
+      const applied = applyEdits(content, parseEdits(edits)), noop = new Set(applied.noopEdits ?? []);
+      edits.forEach((e, i) => expect(noop.has(i)).toBe(isNoop(lines, e)));
+      expect(applied.changedRegions.length).toBe(edits.length - noop.size);
+    }
+  });
+
+  it("each non-noop region indexes exactly its replacement content in output coordinates", () => {
+    const r = rng(3);
+    for (let iter = 0; iter < 500; iter++) {
+      const content = genContent(r), lines = content.split("\n"), edits = genDisjointEdits(r, lineCountOf(content));
+      const applied = applyEdits(content, parseEdits(edits));
+      const out = visLines(applied.content), outCount = Math.max(1, out.length);
+      expect(applied.changedRegions).toEqual(oracleRegions(content, edits)); // refactor lock (formula restated)
+      const nonNoop = edits.filter(e => !isNoop(lines, e)).sort((a, b) => a.range[0] - b.range[0]);
+      expect(applied.changedRegions.length).toBe(nonNoop.length);
+      applied.changedRegions.forEach((reg, k) => {
+        expect(reg.first).toBeGreaterThanOrEqual(1); expect(reg.last).toBeLessThanOrEqual(outCount); expect(reg.first).toBeLessThanOrEqual(reg.last);
+        // First is non-decreasing; a collapsed deletion region may touch the next, so not strictly >.
+        if (k > 0) expect(reg.first).toBeGreaterThanOrEqual(applied.changedRegions[k - 1]!.first);
+        // Independent correctness (no formula re-encoding): an interior region indexes exactly its own
+        // replacement content. EOF regions can mark a trailing-newline change with no visible line to
+        // point at, so those are covered only by the formula lock above.
+        const e = nonNoop[k]!;
+        if (!e.content_lines.length) expect(reg.first).toBe(reg.last); // deletion collapses to a point
+        else if (reg.last < outCount) expect(out.slice(reg.first - 1, reg.last)).toEqual(e.content_lines);
+      });
+    }
+  });
+
+  it("emits W_DUP exactly when a replacement abuts a matching surviving neighbor (order not pinned)", () => {
+    const r = rng(4);
+    for (let iter = 0; iter < 500; iter++) {
+      const content = genContent(r), lines = content.split("\n"), edits = genDisjointEdits(r, lineCountOf(content));
+      const applied = applyEdits(content, parseEdits(edits)), expected: string[] = [];
+      edits.forEach((e, i) => {
+        if (isNoop(lines, e)) return;
+        const ne = nonEmpty(e.content_lines), before = lines[e.range[0] - 2], after = lines[e.range[1]];
+        if (ne[0] !== undefined && ne[0] === before) expected.push(`[W_DUP] Edit ${i}: content_lines starts with the preceding surviving line.`);
+        if (ne.at(-1) !== undefined && ne.at(-1) === after) expected.push(`[W_DUP] Edit ${i}: content_lines ends with the next surviving line.`);
+      });
+      expect([...(applied.warnings ?? [])].sort()).toEqual(expected.sort());
+    }
+  });
+
+  it("firstChangedLine marks the first differing line; unchanged output reports neither bound", () => {
+    const r = rng(5);
+    for (let iter = 0; iter < 500; iter++) {
+      const content = genContent(r), edits = genDisjointEdits(r, lineCountOf(content));
+      const applied = applyEdits(content, parseEdits(edits));
+      // Exact, independent of the diff internals. (Deleting the last line legitimately points one past EOF.)
+      expect(applied.firstChangedLine).toBe(firstDiff(content.split("\n"), applied.content.split("\n")));
+      if (applied.content === content) { expect(applied.firstChangedLine).toBeUndefined(); expect(applied.lastChangedLine).toBeUndefined(); }
+      else expect(applied.lastChangedLine).toBeGreaterThanOrEqual(applied.firstChangedLine!);
+    }
+  });
+
+  it("rejects overlap regardless of order, allows adjacency, rejects out-of-bounds", () => {
+    expect(() => applyEdits("a\nb\nc", parseEdits([{ range: [1, 2], content_lines: ["X"] }, { range: [2, 3], content_lines: ["Y"] }]))).toThrow("E_EDIT_CONFLICT");
+    expect(() => applyEdits("a\nb\nc", parseEdits([{ range: [2, 3], content_lines: ["Y"] }, { range: [1, 2], content_lines: ["X"] }]))).toThrow("E_EDIT_CONFLICT");
+    expect(applyEdits("a\nb\nc", parseEdits([{ range: [1, 1], content_lines: ["X"] }, { range: [2, 2], content_lines: ["Y"] }])).content).toBe("X\nY\nc");
+    expect(() => applyEdits("a\nb", parseEdits([{ range: [2, 3], content_lines: ["x"] }]))).toThrow("E_BAD_RANGE");
+    expect(() => applyEdits("a\nb", parseEdits([{ range: [3, 3], content_lines: ["x"] }]))).toThrow("E_BAD_RANGE");
+  });
+
+  it("shifts later regions by the growth of earlier edits", () => {
+    const applied = applyEdits("a\nb\nc", parseEdits([{ range: [1, 1], content_lines: ["x", "y", "z"] }, { range: [3, 3], content_lines: ["C"] }]));
+    expect(applied.content).toBe("x\ny\nz\nb\nC");
+    expect(applied.changedRegions).toEqual([{ first: 1, last: 3 }, { first: 5, last: 5 }]);
+  });
+});
+
+describe("changedRange properties", () => {
+  const rng = (s: number) => () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 0x100000000; };
+  const ALPHA = ["a", "b", "c", ""];
+  const commonPrefix = (a: string[], b: string[]) => { let i = 0; while (i < Math.min(a.length, b.length) && a[i] === b[i]) i++; return i; };
+
+  it("returns null iff equal, with an unchanged prefix and an unchanged suffix aligned to the original", () => {
+    const r = rng(9);
+    for (let iter = 0; iter < 3000; iter++) {
+      const a = Array.from({ length: Math.floor(r() * 6) }, () => ALPHA[Math.floor(r() * ALPHA.length)]!);
+      const b = Array.from({ length: Math.floor(r() * 6) }, () => ALPHA[Math.floor(r() * ALPHA.length)]!);
+      const aStr = a.join("\n"), bStr = b.join("\n"), cr = changedRange(aStr, bStr);
+      if (aStr === bStr) { expect(cr).toBeNull(); continue; }
+      expect(cr).not.toBeNull();
+      // Compare on the split representation changedRange operates on ([] and [""] both join to "").
+      const al = aStr.split("\n"), bl = bStr.split("\n"), first = cr!.firstChangedLine, last = cr!.lastChangedLine;
+      expect(first).toBe(commonPrefix(al, bl) + 1);            // first = one past the longest common prefix
+      expect(last).toBeGreaterThanOrEqual(first);
+      expect(bl.slice(0, first - 1)).toEqual(al.slice(0, first - 1)); // everything before the window is unchanged
+      const suffixLen = bl.length - last;
+      if (suffixLen > 0) expect(bl.slice(last)).toEqual(al.slice(al.length - suffixLen)); // tail after window matches original tail
+    }
+  });
+
+  it("pins unambiguous edits and documents the trailing-deletion convention", () => {
+    expect(changedRange("x\ny\nz", "x\ny\nz")).toBeNull();
+    expect(changedRange("x\ny\nz", "x\nN\ny\nz")).toEqual({ firstChangedLine: 2, lastChangedLine: 2 }); // middle insert
+    expect(changedRange("x\ny\nz", "x\nP\nQ\nz")).toEqual({ firstChangedLine: 2, lastChangedLine: 3 }); // one line -> two
+    expect(changedRange("x\ny\nz", "x\nz")).toEqual({ firstChangedLine: 2, lastChangedLine: 2 });       // middle delete
+    expect(changedRange("y\nz", "x\ny\nz")).toEqual({ firstChangedLine: 1, lastChangedLine: 1 });       // leading insert
+    expect(changedRange("a\nb", "x\ny")).toEqual({ firstChangedLine: 1, lastChangedLine: 2 });          // full replace
+    expect(changedRange("a", "a\nb")).toEqual({ firstChangedLine: 2, lastChangedLine: 2 });             // append
+    // Pure trailing deletion points one past the new end (the removed line's old number); auto-read clamps it.
+    expect(changedRange("a\nb\nc", "a\nb")).toEqual({ firstChangedLine: 3, lastChangedLine: 3 });
   });
 });
 
