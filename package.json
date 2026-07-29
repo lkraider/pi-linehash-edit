@@ -1,6 +1,6 @@
 {
   "name": "pi-linehash-edit",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "type": "module",
   "description": "Stateless checksum-guarded line editing for pi coding agents",
   "repository": {
