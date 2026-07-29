@@ -148,12 +148,20 @@
     animation: chip 9s ease-in-out infinite;
   }
   .readout figcaption {
-    max-width: 26rem;
-    text-align: center;
+    width: 100%;
+    max-width: 30rem;
     font-size: 0.85em;
     color: var(--muted);
     margin-top: 1.1rem;
     line-height: 1.5;
+  }
+  .readout figcaption ol { margin: 0; padding-left: 1.5em; }
+  .readout figcaption li { margin: 0.2em 0; }
+  .readout figcaption .act {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.92em;
+    font-weight: 600;
+    color: var(--ink);
   }
 
   /* One calm loop: a read result sits at rest, line 2's range is marked,
@@ -201,7 +209,12 @@
       <div class="row row-edit"><span class="ln">2│</span><span class="lc lc-old">const b = 2;</span><span class="lc lc-new">const b = 3;</span><span class="range-chip">[2,2]</span></div>
       <div class="row"><span class="ln">3│</span><span class="lc"></span></div>
     </div>
-    <figcaption>read hands back a checksum with numbered lines; replace edits one range and the file reseals</figcaption>
+    <figcaption>
+      <ol>
+        <li><span class="act">read</span> hands back a checksum with numbered lines</li>
+        <li><span class="act">replace</span> edits one range and the file reseals</li>
+      </ol>
+    </figcaption>
   </figure>
 
   <div class="thesis">
