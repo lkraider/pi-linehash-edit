@@ -205,7 +205,7 @@ The content is normalized internally while edits are calculated. If a file mixes
 
 ### Images and binary files
 
-JPEG, PNG, GIF, and WebP images retain pi's image-reading behavior. Other binary files and directories are rejected instead of being interpreted as editable text.
+JPEG, PNG, GIF, WebP, and BMP images retain pi's image-reading behavior, and directories are rejected. Every other file is read as text — matching pi's own read tool, which decodes non-images as lossy UTF-8 (invalid bytes become U+FFFD) rather than rejecting them. NUL bytes are valid text and no longer trigger rejection.
 
 ## Installation
 

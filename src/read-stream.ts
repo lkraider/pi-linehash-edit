@@ -7,7 +7,7 @@ export interface StreamedWindow { totalLines: number; selectedLines: string[]; c
 
 export async function streamReadWindow(path: string, startLine: number, limit?: number, signal?: AbortSignal): Promise<StreamedWindow> {
   const observed = await readChecksum(path, undefined, signal);
-  const kind = await classifyBytes(observed.raw);
+  const kind = classifyBytes(observed.raw);
   const { normalized, hadUtf8DecodeErrors } = decodeNormalized(observed.raw);
   const lines = visLines(normalized);
   const end = limit === undefined ? lines.length : startLine - 1 + limit;

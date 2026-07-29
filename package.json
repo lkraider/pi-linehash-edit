@@ -3,17 +3,54 @@
   "version": "2.1.0",
   "type": "module",
   "description": "Stateless checksum-guarded line editing for pi coding agents",
-  "repository": { "type": "git", "url": "git+https://github.com/lkraider/pi-linehash-edit.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lkraider/pi-linehash-edit.git"
+  },
   "homepage": "https://github.com/lkraider/pi-linehash-edit#readme",
   "bugs": "https://github.com/lkraider/pi-linehash-edit/issues",
   "author": "pi-linehash-edit contributors",
-  "keywords": ["pi-package", "coding-agent", "file-editing", "optimistic-concurrency", "checksum"],
+  "keywords": [
+    "pi-package",
+    "coding-agent",
+    "file-editing",
+    "optimistic-concurrency",
+    "checksum"
+  ],
   "main": "index.ts",
   "license": "MIT",
-  "files": ["index.ts", "src", "prompts", "README.md", "LICENSE"],
-  "pi": { "extensions": ["./index.ts"] },
-  "dependencies": { "diff": "^8.0.2", "file-type": "^21.3.0", "typebox": "^1.1.38" },
-  "peerDependencies": { "@earendil-works/pi-coding-agent": ">=0.79.0" },
-  "scripts": { "test": "vitest run", "lint": "eslint 'src/**/*.ts' 'index.ts'", "typecheck": "tsc --noEmit", "prepublishOnly": "npm run typecheck && npm run lint && npm test" },
-  "devDependencies": { "@earendil-works/pi-coding-agent": "^0.82.1", "@eslint/js": "^10.0.1", "@types/node": "^22.0.0", "eslint": "^10.7.0", "typescript": "^5.8.0", "typescript-eslint": "^8.65.0", "vitest": "^4.1.8" }
+  "files": [
+    "index.ts",
+    "src",
+    "prompts",
+    "README.md",
+    "LICENSE"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "diff": "^8.0.2",
+    "typebox": "^1.1.38"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.79.0"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "lint": "eslint 'src/**/*.ts' 'index.ts'",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm run lint && npm test"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.82.1",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.0.0",
+    "eslint": "^10.7.0",
+    "typescript": "^5.8.0",
+    "typescript-eslint": "^8.65.0",
+    "vitest": "^4.1.8"
+  }
 }

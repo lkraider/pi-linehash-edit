@@ -6,6 +6,7 @@ import { fileChecksum, readChecksum } from "../src/checksum";
 import { applyEdits, parseEdits, changedRange } from "../src/line-edit";
 import { visLines } from "../src/utils";
 import { fmtReadPreviewStreamed, sparsePreview, sparseRows } from "../src/read";
+import { classifyBytes } from "../src/file-kind";
 import { buildToolDef, execPipeline } from "../src/replace";
 import { genDiff, decodeNormalized } from "../src/replace-diff";
 import extension from "../index";
@@ -377,6 +378,25 @@ describe("decodeNormalized", () => {
     expect(decodeNormalized(raw)).toEqual({ normalized: "a\nb\n�", bom: "﻿", originalEnding: "\r\n", hadMixedEndings: true, hadUtf8DecodeErrors: true });
   });
 });
+
+describe("file classification", () => {
+  it("routes only images by magic bytes; everything else, including NUL bytes, is text", () => {
+    expect(classifyBytes(Buffer.from([0xff, 0xd8, 0xff, 0xe0]))).toEqual({ kind: "image", mimeType: "image/jpeg" });
+    expect(classifyBytes(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toEqual({ kind: "image", mimeType: "image/png" });
+    expect(classifyBytes(Buffer.from("GIF89a"))).toEqual({ kind: "image", mimeType: "image/gif" });
+    expect(classifyBytes(Buffer.concat([Buffer.from("RIFF"), Buffer.alloc(4), Buffer.from("WEBP")]))).toEqual({ kind: "image", mimeType: "image/webp" });
+    expect(classifyBytes(Buffer.from([0x42, 0x4d, 0x00, 0x00]))).toEqual({ kind: "image", mimeType: "image/bmp" });
+    expect(classifyBytes(Buffer.from("const x = 1;\n"))).toEqual({ kind: "text" });
+    expect(classifyBytes(Buffer.alloc(0))).toEqual({ kind: "text" }); // non-image bytes (incl. NUL, see fixture test) are text
+  });
+
+  it("reads a file with NUL bytes as text instead of rejecting it", async () => {
+    const { path } = await fixture(Buffer.from([0x6c, 0x69, 0x6e, 0x65, 0x31, 0x00, 0x0a, 0x6c, 0x69, 0x6e, 0x65, 0x32]));
+    const preview = await fmtReadPreviewStreamed(path, {});
+    expect(preview.text).toContain("line2");
+  });
+});
+
 
 describe("diff summary", () => {
   it("keeps late-file context and line numbers accurate", () => {

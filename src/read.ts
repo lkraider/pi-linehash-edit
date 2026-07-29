@@ -97,7 +97,6 @@ export function regRead(pi: ExtensionAPI): void {
       abortIf(signal); await validateAccess(absolute, path); const kind = await sniffKind(absolute);
       if (kind.kind === "image") return (createReadTool(ctx.cwd).execute as any)(id, params, signal, onUpdate, ctx);
       if (kind.kind === "directory") throw new Error(`Path is a directory: ${path}.`);
-      if (kind.kind === "binary") throw new Error(`Path is a binary file: ${path} (${kind.description}).`);
       const preview = await fmtReadPreviewStreamed(absolute, { offset: params.offset, limit: params.limit }, signal);
       const text = preview.hadUtf8DecodeErrors ? `${preview.text}\n\n[Non-UTF-8 bytes shown as U+FFFD; editing rewrites as UTF-8.]` : preview.text;
       return { content: [{ type: "text" as const, text }], details: preview.truncation ? { truncation: preview.truncation } : undefined };

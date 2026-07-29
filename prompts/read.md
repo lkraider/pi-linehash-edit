@@ -6,4 +6,4 @@ Pagination:
 - Partial reads still return the same whole-file checksum as full reads.
 - Default cap: {{DEFAULT_MAX_LINES}} lines or {{DEFAULT_MAX_BYTES}}. Use offset/limit to continue.
 
-Images retain visual handling. Binary files and directories are rejected. Empty files return `1│` and remain editable.
+Images retain visual handling and directories are rejected. Any other file is read as text (invalid bytes shown as U+FFFD). Empty files return `1│` and remain editable.
