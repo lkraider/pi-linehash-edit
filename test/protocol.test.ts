@@ -6,7 +6,7 @@ import { fileChecksum, readChecksum } from "../src/checksum";
 import { applyEdits, parseEdits } from "../src/line-edit";
 import { fmtReadPreviewStreamed, sparsePreview, sparseRows } from "../src/read";
 import { buildToolDef, execPipeline } from "../src/replace";
-import { genDiff } from "../src/replace-diff";
+import { genDiff, decodeNormalized } from "../src/replace-diff";
 import extension from "../index";
 import { toCwd } from "../src/paths";
 import { MAX_BYTES } from "../src/constants";
@@ -192,6 +192,16 @@ describe("replace guard", () => {
     const tool = buildToolDef() as any;
     await expect(tool.execute("id", { path: "x", changes: [{ range: [1, 1], content_lines: [] }] }, undefined, undefined, { cwd: "." })).rejects.toThrow("E_BAD_CHECKSUM");
     await expect(tool.execute("id", { path: "x", checksum: "bad", changes: [{ range: [1, 1], content_lines: [] }] }, undefined, undefined, { cwd: "." })).rejects.toThrow("E_BAD_CHECKSUM");
+  });
+});
+
+describe("decodeNormalized", () => {
+  it("single-pass decodes valid UTF-8 and falls back on invalid bytes with BOM and mixed endings intact", () => {
+    expect(decodeNormalized(Buffer.from("x\ny\n"))).toEqual({ normalized: "x\ny\n", bom: "", originalEnding: "\n", hadMixedEndings: false, hadUtf8DecodeErrors: false });
+    // BOM + CRLF then LF (mixed) + a lone invalid byte: the fallback path must strip the BOM,
+    // report the decode error, normalize endings, and keep U+FFFD for the bad byte.
+    const raw = Buffer.from([0xef, 0xbb, 0xbf, 0x61, 0x0d, 0x0a, 0x62, 0x0a, 0xff]);
+    expect(decodeNormalized(raw)).toEqual({ normalized: "a\nb\n�", bom: "﻿", originalEnding: "\r\n", hadMixedEndings: true, hadUtf8DecodeErrors: true });
   });
 });
 
