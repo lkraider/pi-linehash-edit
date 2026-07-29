@@ -1,11 +1,11 @@
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { withFileMutationQueue, renderDiff } from "@earendil-works/pi-coding-agent";
+import { withFileMutationQueue, renderDiff, generateDiffString } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { constants } from "node:fs";
 import { readNormFile } from "./file-reader";
 import { sparsePreview } from "./read";
-import { restoreEndings, genDiff, shouldSkipDiff } from "./replace-diff";
+import { restoreEndings, shouldSkipDiff } from "./replace-diff";
 import { resolveTarget, writeAtomic } from "./fs-write";
 import { applyEdits, parseEdits, type RawEdit } from "./line-edit";
 import { toCwd } from "./paths";
@@ -71,7 +71,7 @@ export function buildToolDef(opts: { autoRead?: boolean } = {}): ToolDefinition<
         if (params.checksum !== current.checksum) throw new Error(`[E_STALE_CHECKSUM] ${p.path} changed during replace; nothing was written.`);
         await writeAtomic(absolute, p.rawOutput, target);
         const next = fileChecksum(target, Buffer.from(p.rawOutput));
-        const diff = shouldSkipDiff(p.originalNormalized.split("\n").length, p.result.split("\n").length) ? "" : genDiff(p.originalNormalized, p.result, 2).diff;
+        const diff = shouldSkipDiff(p.originalNormalized.split("\n").length, p.result.split("\n").length) ? "" : generateDiffString(p.originalNormalized, p.result, 2).diff;
         return buildChanged({ path: p.path, warnings: p.warnings, checksum: next, editMeta: meta, diff });
       });
     }

@@ -8,7 +8,7 @@ import { visLines } from "../src/utils";
 import { fmtReadPreviewStreamed, sparsePreview, sparseRows } from "../src/read";
 import { classifyBytes } from "../src/file-kind";
 import { buildToolDef, execPipeline } from "../src/replace";
-import { genDiff, decodeNormalized } from "../src/replace-diff";
+import { decodeNormalized } from "../src/replace-diff";
 import extension from "../index";
 import { toCwd } from "../src/paths";
 import { MAX_BYTES } from "../src/constants";
@@ -394,17 +394,6 @@ describe("file classification", () => {
     const { path } = await fixture(Buffer.from([0x6c, 0x69, 0x6e, 0x65, 0x31, 0x00, 0x0a, 0x6c, 0x69, 0x6e, 0x65, 0x32]));
     const preview = await fmtReadPreviewStreamed(path, {});
     expect(preview.text).toContain("line2");
-  });
-});
-
-
-describe("diff summary", () => {
-  it("keeps late-file context and line numbers accurate", () => {
-    const original = Array.from({ length: 120 }, (_, i) => `line ${i + 1}`);
-    const changed = [...original]; changed[99] = "changed";
-    const result = genDiff(original.join("\n"), changed.join("\n"), 2);
-    expect(result.firstChangedLine).toBe(100);
-    expect(result.diff).toBe(" 98│line 98\n 99│line 99\n-line 100\n+100│changed\n 101│line 101\n 102│line 102");
   });
 });
 
