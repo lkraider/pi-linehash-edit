@@ -3,6 +3,7 @@ import { withFileMutationQueue, renderDiff, generateDiffString } from "@earendil
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { constants } from "node:fs";
+import { isAbsolute, relative } from "node:path";
 import { readNormFile } from "./file-reader";
 import { sparsePreview } from "./read";
 import { restoreEndings, shouldSkipDiff } from "./replace-diff";
@@ -53,6 +54,12 @@ export async function execPipeline(params: ReqParams, cwd: string, accessMode: n
 export function buildToolDef(opts: { autoRead?: boolean } = {}): ToolDefinition<any, ReplaceDetails> {
   const guidance = opts.autoRead ? "After `replace`, auto-read returns a fresh checksum automatically." : "Use `read` again before follow-up `replace` calls.";
   return { name: "replace", label: "Replace", description: loadP("../prompts/replace.md", { AUTO_READ_GUIDANCE: guidance }), promptSnippet: loadP("../prompts/replace-snippet.md"), promptGuidelines: loadGuide("../prompts/replace-guidelines.md", { AUTO_READ_GUIDANCE: guidance }), parameters: editToolSchema,
+    // Header: "replace <cwd-relative path>" so the row identifies its file (shown during run and above the diff).
+    renderCall(args: { path?: string }, theme: { fg(color: string, text: string): string; bold(text: string): string }, context: { cwd: string }) {
+      const raw = typeof args?.path === "string" ? args.path : "";
+      const rel = raw && isAbsolute(raw) ? relative(context.cwd, raw) : raw;
+      return new Text(theme.fg("toolTitle", theme.bold("replace")) + (rel ? " " + theme.fg("accent", rel) : ""), 0, 0);
+    },
     // TUI-only: render the diff, hide the model-facing auto-read dump. No metrics (error) -> fall back to raw text.
     renderResult(result: { content?: { type: string; text?: string }[]; details?: ReplaceDetails }, _options: unknown, theme: { fg(color: string, text: string): string }) {
       const d = result.details;
