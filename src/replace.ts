@@ -8,7 +8,7 @@ import { restoreEndings, genDiff, shouldSkipDiff } from "./replace-diff";
 import { resolveTarget, writeAtomic } from "./fs-write";
 import { applyEdits, parseEdits, type RawEdit } from "./line-edit";
 import { toCwd } from "./paths";
-import { readChecksum, assertChecksum, sameChecksum, fileChecksum } from "./checksum";
+import { readChecksum, assertChecksum, fileChecksum } from "./checksum";
 import { isRec, rejectUnknownFields, abortIf, visLineCount } from "./utils";
 import { MAX_BYTES, MAX_EDIT_LINES } from "./constants";
 import { buildChanged, buildNoop, type RMeta, type RMetrics } from "./replace-response";
@@ -35,7 +35,7 @@ export async function execPipeline(params: ReqParams, cwd: string, accessMode: n
   assertReq(params);
   const edits = parseEdits(params.changes);
   const file = await readNormFile(params.path, cwd, signal, accessMode, MAX_EDIT_LINES, target);
-  if (!sameChecksum(params.checksum, file.checksum)) throw new Error(`[E_STALE_CHECKSUM] ${params.path} changed since your read; nothing was written. Re-derive your edits against the current state below and retry.\n${sparsePreview(file.normalized, file.checksum, edits.map(e => ({ first: e.range[0], last: e.range[1] })))}`);
+  if (params.checksum !== file.checksum) throw new Error(`[E_STALE_CHECKSUM] ${params.path} changed since your read; nothing was written. Re-derive your edits against the current state below and retry.\n${sparsePreview(file.normalized, file.checksum, edits.map(e => ({ first: e.range[0], last: e.range[1] })))}`);
   const applied = applyEdits(file.normalized, edits, signal);
   const rawOutput = file.bom + restoreEndings(applied.content, file.originalEnding);
   if (visLineCount(applied.content) > MAX_EDIT_LINES) throw new Error(`[E_FILE_TOO_LARGE] Result exceeds the ${MAX_EDIT_LINES}-line edit limit.`);
@@ -60,7 +60,7 @@ export function buildToolDef(opts: { autoRead?: boolean } = {}): ToolDefinition<
         if (p.originalNormalized === p.result) return buildNoop({ path: p.path, checksum: p.initialChecksum, editMeta: meta });
         abortIf(signal);
         const current = await readChecksum(target, target, signal);
-        if (!sameChecksum(params.checksum, current.checksum)) throw new Error(`[E_STALE_CHECKSUM] ${p.path} changed during replace; nothing was written.`);
+        if (params.checksum !== current.checksum) throw new Error(`[E_STALE_CHECKSUM] ${p.path} changed during replace; nothing was written.`);
         await writeAtomic(absolute, p.rawOutput, target);
         const next = fileChecksum(target, Buffer.from(p.rawOutput));
         const diff = shouldSkipDiff(p.originalNormalized.split("\n").length, p.result.split("\n").length) ? "" : genDiff(p.originalNormalized, p.result, 2).diff;

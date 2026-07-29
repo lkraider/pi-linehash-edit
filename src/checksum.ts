@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import { open, stat } from "node:fs/promises";
 import { resolveTarget } from "./fs-write";
 import { MAX_BYTES } from "./constants";
@@ -30,10 +30,6 @@ export function assertChecksum(value: unknown): asserts value is string {
   if (typeof value !== "string" || !CHECKSUM_RE.test(value)) {
     throw new Error('[E_BAD_CHECKSUM] "checksum" must be exactly 22 base64url characters.');
   }
-}
-
-export function sameChecksum(left: string, right: string): boolean {
-  return CHECKSUM_RE.test(left) && CHECKSUM_RE.test(right) && timingSafeEqual(Buffer.from(left), Buffer.from(right));
 }
 
 export async function readChecksum(path: string, canonicalPath?: string, signal?: AbortSignal): Promise<{ canonicalPath: string; raw: Buffer; checksum: string }> {

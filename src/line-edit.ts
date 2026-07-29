@@ -29,9 +29,9 @@ export function parseEdits(edits: RawEdit[]): ParsedEdit[] {
     if (!Array.isArray(edit.range) || edit.range.length !== 2 || !edit.range.every(Number.isInteger)) {
       throw new Error(`[E_BAD_RANGE] Edit ${index} field "range" must be two integers [start, end].`);
     }
-    const [start, end] = edit.range as [number, number];
+    const [start, end] = edit.range;
     if (start < 1 || end < start) throw new Error(`[E_BAD_RANGE] Edit ${index} range must satisfy 1 <= start <= end.`);
-    return { range: [start, end], content_lines: [...edit.content_lines] as string[] };
+    return { range: [start, end], content_lines: [...edit.content_lines] };
   });
 }
 
