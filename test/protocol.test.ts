@@ -4,10 +4,10 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileChecksum, readChecksum } from "../src/checksum";
 import { applyEdits, parseEdits } from "../src/line-edit";
-import { fmtReadPreviewStreamed } from "../src/read";
+import { fmtReadPreviewStreamed, sparsePreview, sparseRows } from "../src/read";
 import { buildToolDef, execPipeline } from "../src/replace";
 import { genDiff } from "../src/replace-diff";
-import extension, { sparsePreview, sparseRows } from "../index";
+import extension from "../index";
 import { toCwd } from "../src/paths";
 import { MAX_BYTES } from "../src/constants";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } from "@earendil-works/pi-coding-agent";
@@ -131,6 +131,15 @@ describe("replace guard", () => {
       await writeFile(path, mutation);
       await expect(execPipeline({ path, checksum: read.checksum, changes: [{ range: [1, 1], content_lines: ["A"] }] }, dir, 4)).rejects.toThrow("E_STALE_CHECKSUM");
     }
+  });
+
+  it("hands back the current checksum and region content on stale, so recovery needs no extra read", async () => {
+    const { path, dir } = await fixture("a\nb\nc"); const read = await readChecksum(path);
+    await writeFile(path, "a\nCHANGED\nc"); const current = await readChecksum(path);
+    const err = await execPipeline({ path, checksum: read.checksum, changes: [{ range: [2, 2], content_lines: ["B"] }] }, dir, 4).catch(e => String(e));
+    expect(err).toContain("E_STALE_CHECKSUM");
+    expect(err).toContain(current.checksum);   // fresh checksum, computed independently — retry needs no read
+    expect(err).toContain("CHANGED");          // current content of the region the model tried to edit
   });
 
   it("validates edits before file I/O and does not warn that a noop normalizes endings", async () => {

@@ -1,54 +1,10 @@
-import { DEFAULT_MAX_BYTES, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { regReplace } from "./src/replace";
-import { regRead } from "./src/read";
+import { regRead, sparsePreview, type Region } from "./src/read";
 import { readConfig, toggleAutoRead } from "./src/config";
 import { readNormFile } from "./src/file-reader";
-import { formatRegion } from "./src/line-edit";
 import { visLines, isRec } from "./src/utils";
-import { AUTO_READ_MAX, AUTO_READ_CONTEXT } from "./src/constants";
-
-export type Region = { first: number; last: number };
-
-export function sparseRows(lineCount: number, regions: Region[], cap = AUTO_READ_MAX, context = AUTO_READ_CONTEXT, cost: (row: number) => number = () => 0, byteCap = Infinity): { rows: number[]; omitted: Region[] } {
-  const normalized = regions.map(r => ({ first: Math.max(1, Math.min(lineCount, r.first)), last: Math.max(1, Math.min(lineCount, r.last)) })).filter(r => r.first <= r.last).sort((a, b) => a.first - b.first);
-  const selected = new Set<number>();
-  let bytes = 0;
-  const add = (row: number) => {
-    if (selected.has(row)) return true;
-    const size = cost(row);
-    if (selected.size >= cap || bytes + size > byteCap) return false;
-    selected.add(row); bytes += size; return true;
-  };
-  for (const region of normalized) for (let row = region.first; row <= region.last; row++) if (!add(row) && selected.size >= cap) break;
-  const omitted = normalized.filter(r => { for (let n = r.first; n <= r.last; n++) if (!selected.has(n)) return true; return false; });
-  for (let distance = 1; distance <= context && selected.size < cap; distance++) for (const after of [false, true]) {
-    for (const region of normalized) {
-      const row = after ? region.last + distance : region.first - distance;
-      if (row >= 1 && row <= lineCount) add(row);
-    }
-  }
-  return { rows: [...selected].sort((a, b) => a - b), omitted };
-}
-
-export function sparsePreview(content: string, checksum: string, regions: Region[]): string {
-  const lines = visLines(content);
-  if (!lines.length) return `checksum:${checksum}\n1│`;
-  const cost = (row: number) => Buffer.byteLength(`${row}│${lines[row - 1]}\n`);
-  const markerReserve = Buffer.byteLength(`[Changed regions omitted by cap: ${regions.map(r => `${r.first}-${r.last}`).join(", ")}]\n`);
-  const { rows, omitted } = sparseRows(
-    lines.length, regions, AUTO_READ_MAX - 2, AUTO_READ_CONTEXT, cost,
-    Math.max(0, DEFAULT_MAX_BYTES - Buffer.byteLength(`checksum:${checksum}\n`) - markerReserve),
-  );
-  const blocks: string[] = [`checksum:${checksum}`];
-  let run: number[] = [];
-  const flush = () => { if (run.length) blocks.push(formatRegion(run.map(n => lines[n - 1]!), run[0])); run = []; };
-  for (const row of rows) { if (run.length && row !== run.at(-1)! + 1) flush(); run.push(row); }
-  flush();
-  if (omitted.length) blocks.push(`[Changed regions omitted by cap: ${omitted.map(r => `${r.first}-${r.last}`).join(", ")}]`);
-  const preview = blocks.join("\n");
-  if (Buffer.byteLength(preview) <= DEFAULT_MAX_BYTES) return preview;
-  return `checksum:${checksum}\n[All ${regions.length} changed regions omitted: metadata exceeds cap.]`;
-}
+import { AUTO_READ_MAX } from "./src/constants";
 
 export default function (pi: ExtensionAPI): void {
   regRead(pi); regReplace(pi);

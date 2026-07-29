@@ -3,6 +3,7 @@ import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { constants } from "node:fs";
 import { readNormFile } from "./file-reader";
+import { sparsePreview } from "./read";
 import { restoreEndings, genDiff, shouldSkipDiff } from "./replace-diff";
 import { resolveTarget, writeAtomic } from "./fs-write";
 import { applyEdits, parseEdits, type RawEdit } from "./line-edit";
@@ -34,7 +35,7 @@ export async function execPipeline(params: ReqParams, cwd: string, accessMode: n
   assertReq(params);
   const edits = parseEdits(params.changes);
   const file = await readNormFile(params.path, cwd, signal, accessMode, MAX_EDIT_LINES, target);
-  if (!sameChecksum(params.checksum, file.checksum)) throw new Error(`[E_STALE_CHECKSUM] Checksum does not match ${params.path}. Re-read and retry with the new checksum.`);
+  if (!sameChecksum(params.checksum, file.checksum)) throw new Error(`[E_STALE_CHECKSUM] ${params.path} changed since your read; nothing was written. Re-derive your edits against the current state below and retry.\n${sparsePreview(file.normalized, file.checksum, edits.map(e => ({ first: e.range[0], last: e.range[1] })))}`);
   const applied = applyEdits(file.normalized, edits, signal);
   const rawOutput = file.bom + restoreEndings(applied.content, file.originalEnding);
   if (visLineCount(applied.content) > MAX_EDIT_LINES) throw new Error(`[E_FILE_TOO_LARGE] Result exceeds the ${MAX_EDIT_LINES}-line edit limit.`);
