@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import { withFileMutationQueue, renderDiff } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { constants } from "node:fs";
 import { readNormFile } from "./file-reader";
@@ -52,6 +53,13 @@ export async function execPipeline(params: ReqParams, cwd: string, accessMode: n
 export function buildToolDef(opts: { autoRead?: boolean } = {}): ToolDefinition<any, ReplaceDetails> {
   const guidance = opts.autoRead ? "After `replace`, auto-read returns a fresh checksum automatically." : "Use `read` again before follow-up `replace` calls.";
   return { name: "replace", label: "Replace", description: loadP("../prompts/replace.md", { AUTO_READ_GUIDANCE: guidance }), promptSnippet: loadP("../prompts/replace-snippet.md"), promptGuidelines: loadGuide("../prompts/replace-guidelines.md", { AUTO_READ_GUIDANCE: guidance }), parameters: editToolSchema,
+    // TUI-only: render the diff, hide the model-facing auto-read dump. No metrics (error) -> fall back to raw text.
+    renderResult(result: { content?: { type: string; text?: string }[]; details?: ReplaceDetails }, _options: unknown, theme: { fg(color: string, text: string): string }) {
+      const d = result.details;
+      if (!d?.metrics) return new Text((result.content ?? []).map(c => c.text ?? "").join("\n"), 1, 0);
+      const head = d.metrics.classification === "noop" ? "no changes" : `+${d.metrics.added_lines ?? 0} -${d.metrics.removed_lines ?? 0}`;
+      return new Text(theme.fg("toolOutput", head) + (d.diff ? "\n" + renderDiff(d.diff) : ""), 1, 0);
+    },
     async execute(_id, params, signal, _update, ctx) {
       assertReq(params); const absolute = toCwd(params.path, ctx.cwd), target = await resolveTarget(absolute);
       return withFileMutationQueue(target, async () => {

@@ -1,6 +1,6 @@
 {
   "name": "pi-linehash-edit",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "type": "module",
   "description": "Stateless checksum-guarded line editing for pi coding agents",
   "repository": {
@@ -46,6 +46,7 @@
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.82.1",
+    "@earendil-works/pi-tui": "^0.82.1",
     "@eslint/js": "^10.0.1",
     "@types/node": "^22.0.0",
     "eslint": "^10.7.0",
