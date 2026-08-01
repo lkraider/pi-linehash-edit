@@ -60,10 +60,10 @@ export function buildToolDef(opts: { autoRead?: boolean } = {}): ToolDefinition<
       const rel = raw && isAbsolute(raw) ? relative(context.cwd, raw) : raw;
       return new Text(theme.fg("toolTitle", theme.bold("replace")) + (rel ? " " + theme.fg("accent", rel) : ""), 0, 0);
     },
-    // TUI-only: render the diff, hide the model-facing auto-read dump. No metrics (error) -> fall back to raw text.
+    // TUI-only: render the diff, hide the model-facing auto-read dump. No metrics (error) -> show first line only, full text still goes to the model.
     renderResult(result: { content?: { type: string; text?: string }[]; details?: ReplaceDetails }, _options: unknown, theme: { fg(color: string, text: string): string }) {
       const d = result.details;
-      if (!d?.metrics) return new Text((result.content ?? []).map(c => c.text ?? "").join("\n"), 1, 0);
+      if (!d?.metrics) return new Text(((result.content ?? []).map(c => c.text ?? "").join("\n").split("\n")[0] ?? ""), 1, 0);
       const head = d.metrics.classification === "noop" ? "no changes" : `+${d.metrics.added_lines ?? 0} -${d.metrics.removed_lines ?? 0}`;
       return new Text(theme.fg("toolOutput", head) + (d.diff ? "\n" + renderDiff(d.diff) : ""), 1, 0);
     },
